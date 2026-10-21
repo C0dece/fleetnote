@@ -8,6 +8,9 @@ import { fileURLToPath, URL } from "node:url";
 const host = process.env.TAURI_DEV_HOST;
 
 export default defineConfig({
+  // Относительные пути к ассетам: сборка одинаково работает и в Tauri,
+  // и когда статика раздаётся из подкаталога (веб-демо по ссылке).
+  base: "./",
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
