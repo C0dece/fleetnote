@@ -16,6 +16,7 @@ what="${1:-all}"
 excludes=(
   "$name/node_modules/*"
   "$name/dist/*"
+  "$name/dist-single/*"
   "$name/src-tauri/target/*"
   "$name/src-tauri/gen/*"
   "$name/.vite/*"

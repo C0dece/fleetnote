@@ -22,7 +22,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "build:single": "FLEETNOTE_SINGLE_FILE=1 vite build && node scripts/build-single-file.mjs"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.4",
