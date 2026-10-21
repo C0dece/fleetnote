@@ -1,0 +1,166 @@
+@import "tailwindcss";
+
+/* ──────────────────────────────────────────────────────────────
+   Дизайн-токены. Темы переключаются атрибутом data-theme на <html>,
+   поэтому смена оформления не вызывает перерисовку React-дерева.
+   ────────────────────────────────────────────────────────────── */
+:root {
+  /* Dark (Graphite) — тема по умолчанию */
+  --fn-canvas: #0d0f12;
+  --fn-panel: #15181e;
+  --fn-panel-2: #1b1f27;
+  --fn-hairline: rgb(255 255 255 / 7%);
+  --fn-ink: #e6e8ec;
+  --fn-ink-muted: #9aa1ac;
+  --fn-accent: #6366f1;
+  --fn-accent-soft: rgb(99 102 241 / 16%);
+  --fn-accent-soft-ink: #a5b4fc;
+  --fn-ok: #10b981;
+  --fn-warn: #f59e0b;
+  --fn-danger: #ef4444;
+  --fn-selection: rgb(99 102 241 / 28%);
+  --fn-hover: rgb(255 255 255 / 5%);
+  --fn-shadow: 0 18px 48px rgb(0 0 0 / 45%);
+
+  --fn-font-sans: "Inter", "SF Pro Text", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --fn-font-mono: "JetBrains Mono", "SF Mono", "Cascadia Mono", ui-monospace, monospace;
+  --fn-editor-font-size: 16px;
+  --fn-measure: 65ch;
+  --fn-touch: 44px;
+}
+
+:root[data-theme="light"] {
+  /* Light (Warm Paper) — без синего свечения */
+  --fn-canvas: #faf8f5;
+  --fn-panel: #f2efe9;
+  --fn-panel-2: #ece8e0;
+  --fn-hairline: rgb(28 30 33 / 10%);
+  --fn-ink: #1c1e21;
+  --fn-ink-muted: #6b7280;
+  --fn-accent: #4f46e5;
+  --fn-accent-soft: rgb(79 70 229 / 12%);
+  --fn-accent-soft-ink: #4338ca;
+  --fn-selection: rgb(79 70 229 / 18%);
+  --fn-hover: rgb(28 30 33 / 5%);
+  --fn-shadow: 0 18px 44px rgb(28 30 33 / 14%);
+}
+
+:root[data-theme="amoled"] {
+  /* AMOLED Black — чистый чёрный для экранов смартфонов */
+  --fn-canvas: #000;
+  --fn-panel: #09090b;
+  --fn-panel-2: #121216;
+  --fn-hairline: rgb(255 255 255 / 9%);
+  --fn-ink: #ededf0;
+  --fn-ink-muted: #8f949e;
+}
+
+@theme inline {
+  --color-canvas: var(--fn-canvas);
+  --color-panel: var(--fn-panel);
+  --color-panel-2: var(--fn-panel-2);
+  --color-hairline: var(--fn-hairline);
+  --color-ink: var(--fn-ink);
+  --color-muted: var(--fn-ink-muted);
+  --color-accent: var(--fn-accent);
+  --color-accent-soft: var(--fn-accent-soft);
+  --color-ok: var(--fn-ok);
+  --color-warn: var(--fn-warn);
+  --color-danger: var(--fn-danger);
+  --color-hover: var(--fn-hover);
+  --font-sans: var(--fn-font-sans);
+  --font-mono: var(--fn-font-mono);
+}
+
+@layer base {
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+  }
+
+  body {
+    background: var(--fn-canvas);
+    color: var(--fn-ink);
+    font-family: var(--fn-font-sans);
+    /* 16px базовый кегль: iOS WebView не делает авто-зум при фокусе в поле */
+    font-size: 16px;
+    overscroll-behavior: none;
+  }
+
+  /* Интерфейс не выделяется и не тянется — как в нативном приложении.
+     Текст заметки и поля ввода остаются выделяемыми. */
+  body {
+    user-select: none;
+  }
+
+  input,
+  textarea,
+  .cm-editor,
+  .fn-selectable {
+    user-select: text;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--fn-hairline);
+    border-radius: 99px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@layer utilities {
+  /* Системные зоны: челка/Dynamic Island сверху и Home Indicator снизу */
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .pl-safe {
+    padding-left: env(safe-area-inset-left, 0px);
+  }
+
+  .pr-safe {
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+
+  .touch-row {
+    min-height: var(--fn-touch);
+  }
+
+  .hairline {
+    border-color: var(--fn-hairline);
+  }
+
+  .panel-shadow {
+    box-shadow: var(--fn-shadow);
+  }
+
+  .no-drag {
+    -webkit-app-region: no-drag;
+  }
+
+  .drag-region {
+    -webkit-app-region: drag;
+  }
+}
+
+/* Vaul (мобильные шторки) рисует оверлей и контент порталом в body */
+[data-vaul-overlay] {
+  background: rgb(0 0 0 / 45%);
+}
