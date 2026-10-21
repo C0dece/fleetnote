@@ -2,14 +2,28 @@ name: Сборка приложения
 
 # Установщики под Windows, macOS и Linux собираются на машинах GitHub,
 # поэтому локально не нужны ни Rust, ни Visual Studio, ни Xcode.
+#
+# Запуск: вручную (Actions → Run workflow), по тегу v* или коммитом в main
+# со словом [release] в сообщении. Релиз с установщиками создаёт сам GitHub.
 on:
   workflow_dispatch:
   push:
     tags:
       - "v*"
+    branches:
+      - main
 
 jobs:
   build:
+    # На обычный коммит в main сборку не гоняем — только когда её явно просят
+    if: >-
+      github.event_name != 'push' ||
+      startsWith(github.ref, 'refs/tags/') ||
+      contains(github.event.head_commit.message, '[release]')
+
+    permissions:
+      contents: write
+
     strategy:
       fail-fast: false
       matrix:
@@ -51,18 +65,18 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           args: ${{ matrix.args }}
-          # На тег v* собирается черновик релиза, вручную — просто артефакты сборки
-          tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
-          releaseName: Fleetnote ${{ github.ref_name }}
-          releaseDraft: true
-          prerelease: false
+          # __VERSION__ подставляется из версии приложения в tauri.conf.json
+          tagName: v__VERSION__
+          releaseName: Fleetnote v__VERSION__
+          releaseBody: |
+            Установщики собраны автоматически из исходников этого репозитория.
 
-      - name: Выложить установщики как артефакт запуска
-        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: fleetnote-${{ matrix.platform }}
-          path: |
-            src-tauri/target/release/bundle/**/*
-            src-tauri/target/universal-apple-darwin/release/bundle/**/*
-          if-no-files-found: warn
+            - Windows: `.exe` (NSIS) или `.msi`
+            - macOS: `.dmg` (universal — Intel и Apple Silicon)
+            - Linux: `.AppImage` или `.deb`
+
+            Приложение не подписано сертификатом разработчика: Windows покажет
+            SmartScreen («Подробнее» → «Выполнить в любом случае»), macOS —
+            предупреждение Gatekeeper (правый клик по приложению → «Открыть»).
+          releaseDraft: false
+          prerelease: false
