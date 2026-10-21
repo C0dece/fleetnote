@@ -27,6 +27,7 @@ interface EditorStoreState {
   canForward(): boolean;
   renamed(from: string, to: string): void;
   removed(path: string): void;
+  reloadClean(): Promise<void>;
 }
 
 const timers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -158,6 +159,20 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
         history: state.history.map((item) => (item === from ? to : item)),
       };
     });
+  },
+
+  /**
+   * Перечитать с диска открытые вкладки, в которых нет несохранённых правок.
+   * Нужно после синхронизации: иначе на экране остаётся версия до слияния.
+   */
+  async reloadClean() {
+    const vault = useVaultStore.getState();
+    for (const path of get().tabs) {
+      if (get().dirty[path]) continue;
+      const text = await vault.readNote(path).catch(() => null);
+      if (text === null || text === get().drafts[path]) continue;
+      set((state) => ({ drafts: { ...state.drafts, [path]: text } }));
+    }
   },
 
   removed(path) {

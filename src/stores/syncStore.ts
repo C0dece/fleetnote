@@ -6,6 +6,9 @@ import type { AdapterId, StorageConfig } from "@/core/sync/types";
 
 const CONFIG_KEY = "fleetnote.sync-config.v1";
 
+/** Период фоновой сверки: ловит правки, сделанные на других устройствах. */
+const POLL_MS = 5 * 60 * 1000;
+
 interface SyncStoreState {
   engine: SyncEngine | null;
   config: StorageConfig;
@@ -20,6 +23,8 @@ interface SyncStoreState {
   notifyChange(path: string): void;
   notifyDelete(path: string): void;
 }
+
+let pollTimer: ReturnType<typeof setInterval> | null = null;
 
 function loadConfig(): StorageConfig {
   try {
@@ -47,6 +52,7 @@ export const useSyncStore = create<SyncStoreState>((set, get) => ({
 
   async attach(fs, onRemoteChange) {
     get().engine?.dispose();
+    if (pollTimer) clearInterval(pollTimer);
     const engine = new SyncEngine(fs);
     engine.onState((status) => set({ status }));
     set({ engine });
@@ -65,17 +71,12 @@ export const useSyncStore = create<SyncStoreState>((set, get) => ({
         set({ lastError: error instanceof Error ? error.message : String(error) });
       }
     }
-    // Периодическая сверка: ловит правки, сделанные на других устройствах.
-    const timer = setInterval(
-      () => {
-        void (async () => {
-          const report = await get().engine?.syncAll();
-          if (report && (report.pulled.length || report.merged.length)) await onRemoteChange();
-        })();
-      },
-      5 * 60 * 1000,
-    );
-    if (typeof window !== "undefined") window.addEventListener("beforeunload", () => clearInterval(timer));
+    pollTimer = setInterval(() => {
+      void (async () => {
+        const report = await get().engine?.syncAll();
+        if (report && (report.pulled.length || report.merged.length)) await onRemoteChange();
+      })();
+    }, POLL_MS);
   },
 
   async connect(adapterId, options) {

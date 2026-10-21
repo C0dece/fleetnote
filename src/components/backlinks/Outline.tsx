@@ -1,9 +1,16 @@
+import { useMemo } from "react";
 import { useVaultStore } from "@/stores/vaultStore";
 import { useEditorStore } from "@/stores/editorStore";
 
 /** Оглавление: заголовки открытой заметки с переходом к строке. */
 export function Outline({ path }: { path: string | null }) {
-  const headings = useVaultStore((state) => (path ? (state.manager?.notes.get(path)?.headings ?? []) : []));
+  // Селектор обязан возвращать стабильную ссылку, иначе useSyncExternalStore зациклится.
+  const manager = useVaultStore((state) => state.manager);
+  const revision = useVaultStore((state) => state.revision);
+  const headings = useMemo(() => {
+    void revision;
+    return path ? (manager?.notes.get(path)?.headings ?? []) : [];
+  }, [manager, path, revision]);
   const draft = useEditorStore((state) => (path ? state.drafts[path] : undefined));
 
   if (!path) return <p className="px-3 py-3 text-[12.5px] text-muted">Откройте заметку</p>;

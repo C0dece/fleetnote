@@ -86,6 +86,10 @@ export const useVaultStore = create<VaultState>((set, get) => ({
       });
       await useSyncStore.getState().attach(fs, async () => {
         await get().rescan();
+        // Импорт именно динамический: editorStore статически зависит от vaultStore,
+        // и обычный import замкнул бы цикл на этапе инициализации модулей.
+        const { useEditorStore } = await import("./editorStore");
+        await useEditorStore.getState().reloadClean();
       });
     } catch (error) {
       set({ mode: "error", error: error instanceof Error ? error.message : String(error), progress: null });
