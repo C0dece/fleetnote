@@ -1,6 +1,6 @@
 [package]
 name = "fleetnote"
-version = "0.3.4"
+version = "0.3.5"
 description = "Fleetnote — Markdown-база знаний для ПК и смартфонов"
 authors = ["Fleetnote"]
 edition = "2021"
