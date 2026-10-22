@@ -1,5 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { EditorState, type StateCommand } from "@codemirror/state";
+import { indentUnit } from "@codemirror/language";
 import { EditorView, keymap, drawSelection, dropCursor, placeholder } from "@codemirror/view";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
@@ -21,6 +22,11 @@ export interface EditorProps {
   path: string;
   value: string;
   readOnly?: boolean;
+  /** `live` прячет разметку вне курсора, `source` показывает текст как есть. */
+  mode?: "source" | "live";
+  spellcheck?: boolean;
+  indentSize?: number;
+  slashMenu?: boolean;
   onChange(text: string): void;
   onOpenLink(target: string): void;
   onOpenTag(tag: string): void;
@@ -66,14 +72,21 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(prop
       markdown({ base: markdownLanguage, addKeymap: true }),
       fleetnoteHighlight,
       fleetnoteEditorTheme,
-      placeholder("Пишите в Markdown. [[ — ссылка, # — тег, Ctrl/Cmd+K — палитра команд"),
-      livePreview({
-        onOpenLink: (target) => latest.current.onOpenLink(target),
-        onOpenTag: (tag) => latest.current.onOpenTag(tag),
-      }),
+      placeholder("Пишите в Markdown. [[ — ссылка, # — тег, / — вставка, Ctrl/Cmd+K — палитра"),
+      indentUnit.of(" ".repeat(props.indentSize ?? 2)),
+      EditorView.contentAttributes.of({ spellcheck: props.spellcheck === false ? "false" : "true" }),
+      ...(props.mode === "source"
+        ? []
+        : [
+            livePreview({
+              onOpenLink: (target) => latest.current.onOpenLink(target),
+              onOpenTag: (tag) => latest.current.onOpenTag(tag),
+            }),
+          ]),
       fleetnoteCompletion({
         notes: () => latest.current.notes(),
         tags: () => latest.current.tags(),
+        slashMenu: () => latest.current.slashMenu !== false,
       }),
       attachmentPaste((file) => latest.current.onPasteFile(file)),
       EditorView.updateListener.of((update) => {
@@ -97,7 +110,7 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(prop
     // Пересоздаём редактор при смене заметки — так сбрасывается история отмен,
     // и Ctrl+Z не «переезжает» между файлами.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.path, props.readOnly]);
+  }, [props.path, props.readOnly, props.mode, props.spellcheck, props.indentSize]);
 
   // Внешнее изменение текста (синхронизация подтянула версию из облака).
   useEffect(() => {

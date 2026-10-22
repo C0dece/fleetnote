@@ -56,6 +56,8 @@ export class VaultManager {
   readonly notes = new Map<string, NoteMeta>();
   readonly folders = new Set<string>();
   readonly attachments = new Set<string>();
+  /** Файлы базы, которые не заметки и не вложения: холсты `.canvas` и прочее. */
+  readonly otherFiles = new Set<string>();
 
   private byStem = new Map<string, string[]>();
   private backlinks = new Map<string, Set<string>>();
@@ -84,6 +86,7 @@ export class VaultManager {
     this.notes.clear();
     this.folders.clear();
     this.attachments.clear();
+    this.otherFiles.clear();
     this.parsedCache.clear();
 
     const entries = await this.fs.list();
@@ -91,6 +94,7 @@ export class VaultManager {
     for (const entry of entries) {
       if (entry.isDir) this.folders.add(entry.path);
       else if (isAttachment(entry.path)) this.attachments.add(entry.path);
+      else if (!isMarkdown(entry.path)) this.otherFiles.add(entry.path);
     }
 
     let done = 0;
@@ -298,6 +302,25 @@ export class VaultManager {
       }
     }
 
+    await this.scan(this.scanOptions);
+    this.emit({ type: "renamed", from: path, to: target });
+    return target;
+  }
+
+  /**
+   * Перенос файла или папки в другую папку (перетаскивание в дереве).
+   * Возвращает новый путь или null, если перенос бессмысленен или невозможен.
+   */
+  async move(path: string, targetFolder: string): Promise<string | null> {
+    const folder = targetFolder.replace(/\/+$/, "");
+    if (dirname(path) === folder) return null;
+    // папку нельзя положить внутрь самой себя
+    if (folder === path || folder.startsWith(`${path}/`)) return null;
+    const target = uniquePath(
+      join(folder, basename(path)),
+      (candidate) => this.notes.has(candidate) || this.folders.has(candidate),
+    );
+    await this.fs.rename(path, target);
     await this.scan(this.scanOptions);
     this.emit({ type: "renamed", from: path, to: target });
     return target;

@@ -1,26 +1,37 @@
 import { useEffect, useMemo } from "react";
-import { applyTheme, useUIStore } from "@/stores/uiStore";
+import { useUIStore } from "@/stores/uiStore";
+import { useSettingsStore } from "@/stores/settingsStore";
+import { applyAppearance } from "@/core/theme";
+import { applyWindowFrame, ResizeEdges } from "@/components/layout/WindowChrome";
 import { useVaultStore } from "@/stores/vaultStore";
 import { useEditorStore } from "@/stores/editorStore";
 import { useHotkeys, type Hotkey } from "@/hooks/useHotkeys";
 import { AdaptiveShell } from "@/components/layout/AdaptiveShell";
-import { Welcome } from "@/components/layout/Welcome";
+import { VaultChooser } from "@/components/layout/VaultChooser";
 import { CommandPalette } from "@/components/navigation/CommandPalette";
 import { SettingsDialog } from "@/components/settings/SettingsDialog";
 import { Dialogs } from "@/components/ui/dialogs";
 import { dirname } from "@/core/fs/paths";
 
 export default function App() {
-  const theme = useUIStore((state) => state.theme);
-  const fontSize = useUIStore((state) => state.fontSize);
+  const appearance = useSettingsStore((state) => state.appearance);
   const mode = useVaultStore((state) => state.mode);
   const restoreLast = useVaultStore((state) => state.restoreLast);
 
-  useEffect(() => applyTheme(theme), [theme]);
+  useEffect(() => applyAppearance(appearance), [appearance]);
+
+  // Системная тема может переключиться во время работы приложения
+  useEffect(() => {
+    if (appearance.theme !== "system") return;
+    const query = window.matchMedia("(prefers-color-scheme: light)");
+    const onChange = () => applyAppearance(appearance);
+    query.addEventListener("change", onChange);
+    return () => query.removeEventListener("change", onChange);
+  }, [appearance]);
 
   useEffect(() => {
-    document.documentElement.style.setProperty("--fn-editor-font-size", `${fontSize}px`);
-  }, [fontSize]);
+    void applyWindowFrame(appearance.windowFrame);
+  }, [appearance.windowFrame]);
 
   useEffect(() => {
     void restoreLast();
@@ -82,7 +93,8 @@ export default function App() {
 
   return (
     <>
-      {mode === "ready" ? <AdaptiveShell /> : <Welcome />}
+      {mode === "ready" ? <AdaptiveShell /> : <VaultChooser />}
+      <ResizeEdges />
       <CommandPalette mode="commands" />
       <CommandPalette mode="notes" />
       <SettingsDialog />

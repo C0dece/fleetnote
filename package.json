@@ -1,6 +1,6 @@
 {
   "name": "fleetnote",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "Fleetnote — local-first Markdown knowledge base for desktop and mobile (Tauri v2 + React + CodeMirror 6)",
@@ -41,7 +41,9 @@
     "@tauri-apps/plugin-os": "^2.4.0",
     "@tauri-apps/plugin-sql": "^2.6.0",
     "cmdk": "^1.1.1",
+    "dompurify": "^3.4.17",
     "lucide-react": "^1.61.0",
+    "marked": "^18.1.1",
     "minisearch": "^7.2.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",

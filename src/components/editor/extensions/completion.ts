@@ -1,10 +1,13 @@
 import { autocompletion, type CompletionContext, type CompletionResult } from "@codemirror/autocomplete";
+import { slashMenuSource } from "./slashMenu";
 
 export interface CompletionProviders {
   /** Заметки для подсказок после `[[`. */
   notes: () => Array<{ title: string; path: string }>;
   /** Теги для подсказок после `#`. */
   tags: () => Array<{ tag: string; count: number }>;
+  /** Включено ли меню вставки по «/». */
+  slashMenu: () => boolean;
 }
 
 /** Автодополнение `[[ссылок]]` и `#тегов` прямо во время ввода. */
@@ -43,5 +46,9 @@ export function fleetnoteCompletion(providers: CompletionProviders) {
     return { from: match.from + match.text.indexOf("#") + 1, options, filter: false };
   };
 
-  return autocompletion({ override: [wikiLinks, tags], activateOnTyping: true, icons: false });
+  return autocompletion({
+    override: [wikiLinks, tags, slashMenuSource(providers.slashMenu)],
+    activateOnTyping: true,
+    icons: false,
+  });
 }

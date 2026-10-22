@@ -1,11 +1,22 @@
 import { useState } from "react";
-import { FilePlus2, FolderOpen, Hash, ListTree, Search } from "lucide-react";
+import {
+  FilePlus2,
+  FolderOpen,
+  FolderPlus,
+  Hash,
+  ListTree,
+  Search,
+  Share2,
+  SquareDashedMousePointer,
+} from "lucide-react";
 import { FileTree } from "@/components/navigation/FileTree";
 import { SearchPanel } from "@/components/navigation/SearchPanel";
 import { TagList } from "@/components/navigation/TagList";
 import { useVaultStore } from "@/stores/vaultStore";
 import { useEditorStore } from "@/stores/editorStore";
 import { IconButton } from "@/components/ui/IconButton";
+import { useDialogStore } from "@/components/ui/dialogs";
+import { GRAPH_TAB } from "@/core/views";
 
 type Tab = "files" | "search" | "tags";
 
@@ -14,6 +25,7 @@ export function Sidebar({ touch = false, initialTab = "files" }: { touch?: boole
   const [tab, setTab] = useState<Tab>(initialTab);
   const vault = useVaultStore();
   const openNote = useEditorStore((state) => state.openNote);
+  const prompt = useDialogStore((state) => state.prompt);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -46,7 +58,28 @@ export function Sidebar({ touch = false, initialTab = "files" }: { touch?: boole
           >
             <FilePlus2 size={15} />
           </IconButton>
-          <IconButton title="Открыть папку с заметками" onClick={() => void vault.pickFolder()}>
+          <IconButton
+            title="Новая папка"
+            onClick={async () => {
+              const name = await prompt({ title: "Имя папки", value: "", placeholder: "Проекты" });
+              if (name) await vault.createFolder("", name);
+            }}
+          >
+            <FolderPlus size={15} />
+          </IconButton>
+          <IconButton
+            title="Новый холст"
+            onClick={async () => {
+              const created = await vault.createCanvas();
+              if (created) await openNote(created);
+            }}
+          >
+            <SquareDashedMousePointer size={15} />
+          </IconButton>
+          <IconButton title="Граф базы" onClick={() => void openNote(GRAPH_TAB)}>
+            <Share2 size={15} />
+          </IconButton>
+          <IconButton title="Открыть папку с заметками" onClick={() => void vault.openLocalFolder()}>
             <FolderOpen size={15} />
           </IconButton>
         </div>

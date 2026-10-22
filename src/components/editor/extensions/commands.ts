@@ -121,6 +121,52 @@ export function setHeading(level: number): StateCommand {
   };
 }
 
+/** Вставить блок текста с новой строки (разделитель, таблица, код). */
+export function insertBlock(template: string): StateCommand {
+  return ({ state, dispatch }) => {
+    const line = state.doc.lineAt(state.selection.main.head);
+    const at = line.to;
+    dispatch(
+      state.update({
+        changes: { from: at, insert: template },
+        selection: { anchor: at + template.length },
+        scrollIntoView: true,
+        userEvent: "input.block",
+      }),
+    );
+    return true;
+  };
+}
+
+/** Переключить префикс в начале каждой выделенной строки. */
+function togglePrefix(prefix: string | ((index: number) => string), test: RegExp): StateCommand {
+  return ({ state, dispatch }) => {
+    const changes: Array<{ from: number; to: number; insert: string }> = [];
+    let counter = 0;
+    for (const range of state.selection.ranges) {
+      const first = state.doc.lineAt(range.from).number;
+      const last = state.doc.lineAt(range.to).number;
+      for (let number = first; number <= last; number++) {
+        const line = state.doc.line(number);
+        const existing = test.exec(line.text);
+        const value = typeof prefix === "string" ? prefix : prefix(counter++);
+        changes.push({
+          from: line.from,
+          to: line.from + (existing?.[0].length ?? 0),
+          insert: existing ? "" : value,
+        });
+      }
+    }
+    if (!changes.length) return false;
+    dispatch(state.update({ changes, userEvent: "input.prefix" }));
+    return true;
+  };
+}
+
+export const toggleQuote = togglePrefix("> ", /^>\s?/);
+export const toggleBullet = togglePrefix("- ", /^[-*+]\s+/);
+export const toggleOrdered = togglePrefix((index) => `${index + 1}. `, /^\d+\.\s+/);
+
 export const formattingKeymap = keymap.of([
   { key: "Mod-b", run: toggleBold, preventDefault: true },
   { key: "Mod-i", run: toggleItalic, preventDefault: true },

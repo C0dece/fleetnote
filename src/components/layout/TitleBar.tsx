@@ -1,49 +1,16 @@
-import { useEffect, useState } from "react";
-import {
-  ArrowLeft,
-  ArrowRight,
-  Columns2,
-  Minus,
-  PanelLeft,
-  PanelRight,
-  Search,
-  Settings,
-  Square,
-  X,
-} from "lucide-react";
-import { isTauri } from "@/core/fs";
+import { ArrowLeft, ArrowRight, Columns2, PanelLeft, PanelRight, Search, Settings } from "lucide-react";
 import { useUIStore } from "@/stores/uiStore";
 import { useEditorStore } from "@/stores/editorStore";
 import { useVaultStore } from "@/stores/vaultStore";
 import { IconButton } from "@/components/ui/IconButton";
 import { SyncBadge } from "./SyncBadge";
+import { WindowButtons } from "./WindowChrome";
 
 /** Тонкий заголовок окна: навигация, панели и системные кнопки в 36px. */
 export function TitleBar() {
   const ui = useUIStore();
   const editor = useEditorStore();
   const rootLabel = useVaultStore((state) => state.rootLabel);
-  const [maximized, setMaximized] = useState(false);
-
-  useEffect(() => {
-    if (!isTauri()) return;
-    void (async () => {
-      const { getCurrentWindow } = await import("@tauri-apps/api/window");
-      setMaximized(await getCurrentWindow().isMaximized());
-    })();
-  }, []);
-
-  const windowAction = async (action: "minimize" | "toggle" | "close") => {
-    if (!isTauri()) return;
-    const { getCurrentWindow } = await import("@tauri-apps/api/window");
-    const current = getCurrentWindow();
-    if (action === "minimize") await current.minimize();
-    if (action === "close") await current.close();
-    if (action === "toggle") {
-      await current.toggleMaximize();
-      setMaximized(await current.isMaximized());
-    }
-  };
 
   return (
     <header
@@ -75,11 +42,7 @@ export function TitleBar() {
         <IconButton title="Поиск заметки (Ctrl/Cmd + O)" onClick={() => ui.setQuickSwitch(true)}>
           <Search size={15} />
         </IconButton>
-        <IconButton
-          title="Разделить экран"
-          onClick={() => editor.setSplit(editor.split ? null : editor.active)}
-          active={Boolean(editor.split)}
-        >
+        <IconButton title="Разделить экран по вертикали" onClick={() => editor.splitActive("row")}>
           <Columns2 size={15} />
         </IconButton>
         <IconButton title="Правая панель" onClick={() => ui.toggleRight()} active={ui.rightOpen}>
@@ -88,26 +51,7 @@ export function TitleBar() {
         <IconButton title="Настройки" onClick={() => ui.setSettings(true)}>
           <Settings size={15} />
         </IconButton>
-        {isTauri() && (
-          <div className="ml-1 flex items-center gap-0.5">
-            <IconButton title="Свернуть" onClick={() => void windowAction("minimize")}>
-              <Minus size={14} />
-            </IconButton>
-            <IconButton
-              title={maximized ? "Восстановить" : "Развернуть"}
-              onClick={() => void windowAction("toggle")}
-            >
-              <Square size={12} />
-            </IconButton>
-            <IconButton
-              title="Закрыть"
-              onClick={() => void windowAction("close")}
-              className="hover:bg-danger hover:text-white"
-            >
-              <X size={15} />
-            </IconButton>
-          </div>
-        )}
+        <WindowButtons />
       </div>
     </header>
   );

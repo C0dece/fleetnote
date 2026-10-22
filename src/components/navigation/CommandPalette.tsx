@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import { Command } from "cmdk";
 import {
+  Share2,
+  SquareDashedMousePointer,
   FilePlus2,
   FileText,
   FolderOpen,
@@ -15,6 +17,21 @@ import { useVaultStore } from "@/stores/vaultStore";
 import { useEditorStore } from "@/stores/editorStore";
 import { useSyncStore } from "@/stores/syncStore";
 import { useUIStore } from "@/stores/uiStore";
+import { useSettingsStore, type ThemeName } from "@/stores/settingsStore";
+import { GRAPH_TAB } from "@/core/views";
+
+const THEME_LABELS: Record<ThemeName, string> = {
+  light: "светлая",
+  dark: "тёмная",
+  amoled: "AMOLED",
+  system: "системная",
+};
+
+const THEME_ORDER: ThemeName[] = ["system", "light", "dark", "amoled"];
+
+function nextTheme(theme: ThemeName): ThemeName {
+  return THEME_ORDER[(THEME_ORDER.indexOf(theme) + 1) % THEME_ORDER.length];
+}
 
 export interface PaletteCommand {
   id: string;
@@ -35,6 +52,8 @@ export function CommandPalette({ mode }: { mode: "commands" | "notes" }) {
   const editor = useEditorStore();
   const ui = useUIStore();
   const sync = useSyncStore();
+  const theme = useSettingsStore((state) => state.appearance.theme);
+  const setSetting = useSettingsStore((state) => state.set);
 
   const open = mode === "commands" ? ui.palette : ui.quickSwitch;
   const close = () => {
@@ -60,10 +79,25 @@ export function CommandPalette({ mode }: { mode: "commands" | "notes" }) {
         },
       },
       {
+        id: "graph",
+        title: "Открыть граф базы",
+        icon: <Share2 size={15} />,
+        run: () => void editor.openNote(GRAPH_TAB),
+      },
+      {
+        id: "canvas",
+        title: "Новый холст",
+        icon: <SquareDashedMousePointer size={15} />,
+        run: async () => {
+          const created = await vault.createCanvas();
+          if (created) await editor.openNote(created);
+        },
+      },
+      {
         id: "open-vault",
         title: "Открыть другую папку с заметками",
         icon: <FolderOpen size={15} />,
-        run: () => void vault.pickFolder(),
+        run: () => void vault.openLocalFolder(),
       },
       {
         id: "sync",
@@ -73,9 +107,9 @@ export function CommandPalette({ mode }: { mode: "commands" | "notes" }) {
       },
       {
         id: "theme",
-        title: `Тема: ${ui.theme === "light" ? "светлая" : ui.theme === "dark" ? "тёмная" : "AMOLED"} → следующая`,
-        icon: ui.theme === "light" ? <SunMedium size={15} /> : <Moon size={15} />,
-        run: () => ui.setTheme(ui.theme === "light" ? "dark" : ui.theme === "dark" ? "amoled" : "light"),
+        title: `Тема: ${THEME_LABELS[theme]} → следующая`,
+        icon: theme === "light" ? <SunMedium size={15} /> : <Moon size={15} />,
+        run: () => setSetting("appearance", { theme: nextTheme(theme) }),
       },
       {
         id: "left",
@@ -103,7 +137,7 @@ export function CommandPalette({ mode }: { mode: "commands" | "notes" }) {
         run: () => void vault.rescan(),
       },
     ],
-    [vault, editor, ui, sync],
+    [vault, editor, ui, sync, theme, setSetting],
   );
 
   const filteredCommands = useMemo(() => {

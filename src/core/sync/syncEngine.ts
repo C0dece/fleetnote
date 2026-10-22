@@ -11,6 +11,7 @@ import {
   type SyncManifest,
 } from "./manifest";
 import { merge3 } from "./merge";
+import type { ConflictPolicy, SyncDirection } from "@/stores/settingsStore";
 
 export type SyncStatus = "off" | "idle" | "syncing" | "offline" | "error";
 
@@ -33,9 +34,15 @@ export interface SyncReport {
   deletedRemote: string[];
 }
 
+export interface SyncOptions {
+  /** `both` — сверка в обе стороны, `push` — только отправить, `pull` — только забрать. */
+  direction?: SyncDirection;
+  conflict?: ConflictPolicy;
+}
+
 const BASE_DIR = `${MANIFEST_DIR}/base`;
 const QUEUE_KEY = "fleetnote.sync-queue.v1";
-const PUSH_DEBOUNCE_MS = 1500;
+const DEFAULT_PUSH_DEBOUNCE_MS = 1500;
 
 /**
  * Фоновый синхронизатор. Правило номер один: редактор никогда не ждёт сеть.
@@ -50,6 +57,8 @@ export class SyncEngine {
   private running = false;
   private listeners = new Set<(state: SyncState) => void>();
   private state: SyncState = { status: "off", pending: 0, conflicts: [] };
+  private pushDebounceMs = DEFAULT_PUSH_DEBOUNCE_MS;
+  private defaults: Required<SyncOptions> = { direction: "both", conflict: "merge" };
   private onlineHandler = () => {
     if (this.adapter) void this.flush();
   };
@@ -64,6 +73,17 @@ export class SyncEngine {
     if (this.timer) clearTimeout(this.timer);
     if (typeof window !== "undefined") window.removeEventListener("online", this.onlineHandler);
     this.listeners.clear();
+  }
+
+  /** Значения из настроек: задержка отправки, направление и политика конфликтов по умолчанию. */
+  configure(options: {
+    pushDebounceMs?: number;
+    direction?: SyncDirection;
+    conflict?: ConflictPolicy;
+  }): void {
+    if (options.pushDebounceMs) this.pushDebounceMs = options.pushDebounceMs;
+    if (options.direction) this.defaults.direction = options.direction;
+    if (options.conflict) this.defaults.conflict = options.conflict;
   }
 
   onState(listener: (state: SyncState) => void): () => void {
@@ -98,7 +118,7 @@ export class SyncEngine {
     this.patch({});
     if (!this.adapter) return;
     if (this.timer) clearTimeout(this.timer);
-    this.timer = setTimeout(() => void this.flush(), PUSH_DEBOUNCE_MS);
+    this.timer = setTimeout(() => void this.flush(), this.pushDebounceMs);
   }
 
   notifyLocalDelete(path: string): void {
@@ -106,12 +126,12 @@ export class SyncEngine {
     writeQueue([...this.queue]);
     if (this.adapter) {
       if (this.timer) clearTimeout(this.timer);
-      this.timer = setTimeout(() => void this.flush(), PUSH_DEBOUNCE_MS);
+      this.timer = setTimeout(() => void this.flush(), this.pushDebounceMs);
     }
   }
 
   /** Отправить накопленную очередь. */
-  async flush(): Promise<SyncReport | null> {
+  async flush(options: SyncOptions = {}): Promise<SyncReport | null> {
     if (!this.adapter || this.running || this.queue.size === 0) return null;
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
       this.patch({ status: "offline", message: "Нет сети — правки ждут в очереди" });
@@ -121,7 +141,7 @@ export class SyncEngine {
     return this.run(async (adapter, remote) => {
       const report = emptyReport();
       for (const path of paths) {
-        await this.reconcile(adapter, path, remote.get(path), report);
+        await this.reconcile(adapter, path, remote.get(path), report, this.resolve(options));
         this.queue.delete(path);
         writeQueue([...this.queue]);
         this.patch({});
@@ -130,20 +150,38 @@ export class SyncEngine {
     });
   }
 
-  /** Полная двусторонняя сверка: при старте, по кнопке и после возврата сети. */
-  async syncAll(): Promise<SyncReport | null> {
+  /** Полная сверка: при старте, по кнопке и после возврата сети. */
+  async syncAll(options: SyncOptions = {}): Promise<SyncReport | null> {
     if (!this.adapter) return null;
+    const resolved = this.resolve(options);
     return this.run(async (adapter, remote) => {
       const report = emptyReport();
       const local = await this.localFiles();
       const paths = new Set<string>([...local, ...remote.keys(), ...this.queue]);
       for (const path of [...paths].sort()) {
-        await this.reconcile(adapter, path, remote.get(path), report);
+        await this.reconcile(adapter, path, remote.get(path), report, resolved);
         this.queue.delete(path);
       }
       writeQueue([...this.queue]);
       return report;
     });
+  }
+
+  /** Забрать состояние хранилища на устройство, ничего не отправляя. */
+  async pull(): Promise<SyncReport | null> {
+    return this.syncAll({ direction: "pull" });
+  }
+
+  /** Отправить локальное состояние в хранилище, ничего не забирая. */
+  async push(): Promise<SyncReport | null> {
+    return this.syncAll({ direction: "push" });
+  }
+
+  private resolve(options: SyncOptions): Required<SyncOptions> {
+    return {
+      direction: options.direction ?? this.defaults.direction,
+      conflict: options.conflict ?? this.defaults.conflict,
+    };
   }
 
   private async run(
@@ -188,37 +226,49 @@ export class SyncEngine {
     path: string,
     remoteMeta: RemoteFileMeta | undefined,
     report: SyncReport,
+    options: Required<SyncOptions>,
   ): Promise<void> {
     if (path.startsWith(`${MANIFEST_DIR}/`)) return;
     const entry = this.manifest.entries[path];
     const localExists = await this.fs.exists(path);
     const text = isMarkdown(path);
+    const { direction } = options;
 
-    // 1. Файла нет в облаке.
+    // 1. Файла нет в хранилище.
     if (!remoteMeta) {
       if (!localExists) {
         delete this.manifest.entries[path];
         return;
       }
+      if (direction === "pull") return; // забираем только чужое, своё не трогаем
       const localHash = await this.hashLocal(path);
-      if (entry && entry.hash === localHash) {
-        // Локально не меняли, а в облаке удалили — повторяем удаление у себя.
+      if (direction === "both" && entry && entry.hash === localHash) {
+        // Локально не меняли, а в хранилище удалили — повторяем удаление у себя.
         await this.fs.remove(path);
         await this.removeBase(path);
         delete this.manifest.entries[path];
         report.deletedLocal.push(path);
         return;
       }
-      await this.push(adapter, path);
+      await this.pushFile(adapter, path);
       report.pushed.push(path);
       return;
     }
 
-    // 2. Файла нет локально.
+    // 2. Файла нет на устройстве.
     if (!localExists) {
+      if (direction === "push") {
+        if (entry) {
+          await adapter.deleteFile(path);
+          await this.removeBase(path);
+          delete this.manifest.entries[path];
+          report.deletedRemote.push(path);
+        }
+        return;
+      }
       const remoteContent = await adapter.readFile(path);
       const remoteHash = await sha256(remoteContent);
-      if (entry && entry.hash === remoteHash) {
+      if (direction === "both" && entry && entry.hash === remoteHash) {
         await adapter.deleteFile(path);
         await this.removeBase(path);
         delete this.manifest.entries[path];
@@ -244,11 +294,24 @@ export class SyncEngine {
       return;
     }
 
+    if (direction === "push") {
+      await this.pushFile(adapter, path, localContent, localHash);
+      report.pushed.push(path);
+      return;
+    }
+    if (direction === "pull") {
+      await this.writeLocal(path, remoteContent);
+      await this.saveBase(path, remoteContent);
+      this.manifest.entries[path] = { hash: remoteHash, mtime: remoteMeta.mtime, syncedAt: Date.now() };
+      report.pulled.push(path);
+      return;
+    }
+
     const localChanged = !entry || entry.hash !== localHash;
     const remoteChanged = !entry || entry.hash !== remoteHash;
 
     if (localChanged && !remoteChanged) {
-      await this.push(adapter, path, localContent, localHash);
+      await this.pushFile(adapter, path, localContent, localHash);
       report.pushed.push(path);
       return;
     }
@@ -260,29 +323,70 @@ export class SyncEngine {
       return;
     }
 
-    // Изменили с двух сторон. Текст пробуем слить, бинарник — только копией.
-    if (!text || typeof localContent !== "string" || typeof remoteContent !== "string") {
-      await this.keepBothBinary(adapter, path, remoteContent, report);
+    // Изменили с двух сторон — дальше решает политика конфликтов.
+    await this.resolveConflict(
+      adapter,
+      path,
+      { localContent, localHash, remoteContent, remoteMeta },
+      report,
+      options,
+    );
+  }
+
+  private async resolveConflict(
+    adapter: IStorageAdapter,
+    path: string,
+    data: {
+      localContent: string | Uint8Array;
+      localHash: string;
+      remoteContent: string | Uint8Array;
+      remoteMeta: RemoteFileMeta;
+    },
+    report: SyncReport,
+    options: Required<SyncOptions>,
+  ): Promise<void> {
+    const { localContent, localHash, remoteContent, remoteMeta } = data;
+    const mergeable =
+      options.conflict === "merge" && typeof localContent === "string" && typeof remoteContent === "string";
+
+    if (options.conflict === "keep-local") {
+      await this.pushFile(adapter, path, localContent, localHash);
+      report.pushed.push(path);
       return;
     }
-    const base = (await this.readBase(path)) ?? "";
-    const merged = merge3(base, localContent, remoteContent);
-    if (!merged.conflicted) {
-      await this.fs.writeText(path, merged.text);
-      await this.push(adapter, path, merged.text);
-      await this.saveBase(path, merged.text);
-      report.merged.push(path);
+    if (options.conflict === "keep-remote") {
+      await this.writeLocal(path, remoteContent);
+      await this.saveBase(path, remoteContent);
+      this.manifest.entries[path] = {
+        hash: await sha256(remoteContent),
+        mtime: remoteMeta.mtime,
+        syncedAt: Date.now(),
+      };
+      report.pulled.push(path);
       return;
     }
-    // Пересечение правок: ничего не теряем — версия из облака ложится рядом.
+
+    if (mergeable) {
+      const base = (await this.readBase(path)) ?? "";
+      const merged = merge3(base, localContent as string, remoteContent as string);
+      if (!merged.conflicted) {
+        await this.fs.writeText(path, merged.text);
+        await this.pushFile(adapter, path, merged.text);
+        await this.saveBase(path, merged.text);
+        report.merged.push(path);
+        return;
+      }
+    }
+
+    // Ничего не теряем: версия из хранилища ложится рядом отдельным файлом.
     const copy = conflictPath(path);
-    await this.fs.writeText(copy, remoteContent);
-    await this.push(adapter, copy, remoteContent);
-    await this.push(adapter, path, localContent, localHash);
+    await this.writeLocal(copy, remoteContent);
+    await this.pushFile(adapter, copy, remoteContent);
+    await this.pushFile(adapter, path, localContent, localHash);
     report.conflicted.push(copy);
   }
 
-  private async push(
+  private async pushFile(
     adapter: IStorageAdapter,
     path: string,
     content?: string | Uint8Array,
@@ -296,19 +400,6 @@ export class SyncEngine {
     await adapter.writeFile(path, body, mtime);
     await this.saveBase(path, body);
     this.manifest.entries[path] = { hash, mtime, syncedAt: Date.now() };
-  }
-
-  private async keepBothBinary(
-    adapter: IStorageAdapter,
-    path: string,
-    remoteContent: string | Uint8Array,
-    report: SyncReport,
-  ): Promise<void> {
-    const copy = conflictPath(path);
-    await this.writeLocal(copy, remoteContent);
-    await this.push(adapter, copy, remoteContent);
-    await this.push(adapter, path);
-    report.conflicted.push(copy);
   }
 
   private async writeLocal(path: string, content: string | Uint8Array): Promise<void> {

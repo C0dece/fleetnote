@@ -12,7 +12,7 @@ export const fleetnoteEditorTheme = EditorView.theme({
   },
   ".cm-scroller": {
     fontFamily: "var(--fn-font-sans)",
-    lineHeight: "1.65",
+    lineHeight: "var(--fn-editor-line-height)",
     padding: "0 clamp(16px, 4vw, 48px) 40vh",
     overflowY: "auto",
     WebkitOverflowScrolling: "touch",

@@ -164,3 +164,135 @@
 [data-vaul-overlay] {
   background: rgb(0 0 0 / 45%);
 }
+
+/* ──────────────────────────────────────────────────────────────
+   Режим чтения: та же типографика, что в редакторе, но без разметки.
+   ────────────────────────────────────────────────────────────── */
+.fn-reading {
+  font-size: var(--fn-editor-font-size);
+  line-height: var(--fn-editor-line-height);
+  color: var(--fn-ink);
+}
+
+.fn-reading h1,
+.fn-reading h2,
+.fn-reading h3,
+.fn-reading h4 {
+  margin: 1.4em 0 0.5em;
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+.fn-reading h1 {
+  font-size: 1.7em;
+}
+
+.fn-reading h2 {
+  font-size: 1.42em;
+}
+
+.fn-reading h3 {
+  font-size: 1.22em;
+}
+
+.fn-reading p,
+.fn-reading ul,
+.fn-reading ol,
+.fn-reading blockquote,
+.fn-reading pre,
+.fn-reading table {
+  margin: 0.75em 0;
+}
+
+.fn-reading ul,
+.fn-reading ol {
+  padding-left: 1.4em;
+}
+
+.fn-reading ul {
+  list-style: disc;
+}
+
+.fn-reading ol {
+  list-style: decimal;
+}
+
+.fn-reading li {
+  margin: 0.2em 0;
+}
+
+.fn-reading li input[type="checkbox"] {
+  margin-right: 0.4em;
+  accent-color: var(--fn-ok);
+}
+
+.fn-reading a {
+  color: var(--fn-accent);
+  text-decoration: none;
+}
+
+.fn-reading a:hover {
+  text-decoration: underline;
+}
+
+.fn-reading .fn-tag {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--fn-accent-soft);
+  color: var(--fn-accent-soft-ink);
+  cursor: pointer;
+}
+
+.fn-reading code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--fn-panel-2);
+  font-family: var(--fn-font-mono);
+  font-size: 0.92em;
+}
+
+.fn-reading pre {
+  overflow-x: auto;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--fn-panel);
+  border: 1px solid var(--fn-hairline);
+}
+
+.fn-reading pre code {
+  padding: 0;
+  background: none;
+}
+
+.fn-reading blockquote {
+  padding-left: 0.9em;
+  border-left: 3px solid var(--fn-accent);
+  color: var(--fn-ink-muted);
+}
+
+.fn-reading table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.fn-reading th,
+.fn-reading td {
+  padding: 6px 10px;
+  border: 1px solid var(--fn-hairline);
+  text-align: left;
+}
+
+.fn-reading th {
+  background: var(--fn-panel);
+}
+
+.fn-reading hr {
+  margin: 1.6em 0;
+  border: none;
+  border-top: 1px solid var(--fn-hairline);
+}
+
+.fn-reading img {
+  max-width: 100%;
+  border-radius: 8px;
+}

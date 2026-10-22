@@ -2,94 +2,104 @@ import { create } from "zustand";
 import type { VaultFs } from "@/core/fs/types";
 import { SyncEngine, type SyncState as EngineState } from "@/core/sync/syncEngine";
 import { createAdapter } from "@/core/sync/adapters";
-import type { AdapterId, StorageConfig } from "@/core/sync/types";
-
-const CONFIG_KEY = "fleetnote.sync-config.v1";
-
-/** Период фоновой сверки: ловит правки, сделанные на других устройствах. */
-const POLL_MS = 5 * 60 * 1000;
+import type { AdapterId } from "@/core/sync/types";
+import type { VaultProfile } from "@/core/vault/profiles";
+import { saveProfile } from "@/core/vault/profiles";
+import { settings, useSettingsStore, type SyncDirection } from "./settingsStore";
 
 interface SyncStoreState {
   engine: SyncEngine | null;
-  config: StorageConfig;
+  profile: VaultProfile | null;
   status: EngineState;
   busy: boolean;
   lastError?: string;
 
-  attach(fs: VaultFs, onRemoteChange: () => Promise<void>): Promise<void>;
+  attach(fs: VaultFs, profile: VaultProfile, onRemoteChange: () => Promise<void>): Promise<void>;
   connect(adapter: AdapterId, options: Record<string, string>): Promise<boolean>;
   disconnect(): Promise<void>;
-  syncNow(): Promise<void>;
+  syncNow(direction?: SyncDirection): Promise<void>;
   notifyChange(path: string): void;
   notifyDelete(path: string): void;
 }
 
 let pollTimer: ReturnType<typeof setInterval> | null = null;
-
-function loadConfig(): StorageConfig {
-  try {
-    const raw = localStorage.getItem(CONFIG_KEY);
-    if (raw) return JSON.parse(raw) as StorageConfig;
-  } catch {
-    /* повреждённый конфиг — начинаем с чистого */
-  }
-  return { adapter: "none", options: {} };
-}
-
-function saveConfig(config: StorageConfig): void {
-  try {
-    localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
-  } catch {
-    /* приватный режим */
-  }
-}
+let unsubscribeSettings: (() => void) | null = null;
 
 export const useSyncStore = create<SyncStoreState>((set, get) => ({
   engine: null,
-  config: loadConfig(),
+  profile: null,
   status: { status: "off", pending: 0, conflicts: [] },
   busy: false,
 
-  async attach(fs, onRemoteChange) {
+  async attach(fs, profile, onRemoteChange) {
     get().engine?.dispose();
     if (pollTimer) clearInterval(pollTimer);
+    unsubscribeSettings?.();
+
     const engine = new SyncEngine(fs);
     engine.onState((status) => set({ status }));
-    set({ engine });
+    engine.configure({
+      pushDebounceMs: settings().sync.pushDebounceMs,
+      direction: settings().sync.direction,
+      conflict: settings().sync.conflict,
+    });
+    // Настройки синхронизации применяются на лету, без перезапуска
+    unsubscribeSettings = useSettingsStore.subscribe((state) =>
+      engine.configure({
+        pushDebounceMs: state.sync.pushDebounceMs,
+        direction: state.sync.direction,
+        conflict: state.sync.conflict,
+      }),
+    );
+    set({ engine, profile, lastError: undefined });
 
-    const { config } = get();
-    if (config.adapter !== "none") {
+    if (profile.adapter && profile.options) {
       try {
-        const adapter = await createAdapter(config.adapter);
-        await adapter.connect(config.options);
+        const adapter = await createAdapter(profile.adapter);
+        await adapter.connect(profile.options);
         await engine.setAdapter(adapter);
-        const report = await engine.syncAll();
-        if (report && (report.pulled.length || report.merged.length || report.conflicted.length)) {
-          await onRemoteChange();
+        if (settings().sync.syncOnStart) {
+          const report = await engine.syncAll();
+          if (report && (report.pulled.length || report.merged.length || report.conflicted.length)) {
+            await onRemoteChange();
+          }
         }
       } catch (error) {
         set({ lastError: error instanceof Error ? error.message : String(error) });
       }
     }
-    pollTimer = setInterval(() => {
-      void (async () => {
-        const report = await get().engine?.syncAll();
-        if (report && (report.pulled.length || report.merged.length)) await onRemoteChange();
-      })();
-    }, POLL_MS);
+
+    const schedulePoll = () => {
+      if (pollTimer) clearInterval(pollTimer);
+      const { auto, intervalMin } = settings().sync;
+      if (!auto) return;
+      pollTimer = setInterval(
+        () => {
+          void (async () => {
+            const report = await get().engine?.syncAll();
+            if (report && (report.pulled.length || report.merged.length)) await onRemoteChange();
+          })();
+        },
+        Math.max(1, intervalMin) * 60 * 1000,
+      );
+    };
+    schedulePoll();
   },
 
   async connect(adapterId, options) {
-    const { engine } = get();
+    const { engine, profile } = get();
     if (!engine) return false;
     set({ busy: true, lastError: undefined });
     try {
       const adapter = await createAdapter(adapterId);
       await adapter.connect(options);
       await engine.setAdapter(adapter);
-      const config: StorageConfig = { adapter: adapterId, options };
-      saveConfig(config);
-      set({ config, busy: false });
+      if (profile) {
+        const updated: VaultProfile = { ...profile, adapter: adapterId, options };
+        saveProfile(updated);
+        set({ profile: updated });
+      }
+      set({ busy: false });
       await engine.syncAll();
       return true;
     } catch (error) {
@@ -99,15 +109,19 @@ export const useSyncStore = create<SyncStoreState>((set, get) => ({
   },
 
   async disconnect() {
-    const config: StorageConfig = { adapter: "none", options: {} };
-    saveConfig(config);
+    const { profile } = get();
     await get().engine?.setAdapter(null);
-    set({ config });
+    if (profile) {
+      const updated: VaultProfile = { ...profile, adapter: undefined, options: undefined };
+      saveProfile(updated);
+      set({ profile: updated });
+    }
   },
 
-  async syncNow() {
+  /** Ручная синхронизация. Направление перекрывает настройку по умолчанию. */
+  async syncNow(direction) {
     set({ busy: true });
-    await get().engine?.syncAll();
+    await get().engine?.syncAll(direction ? { direction } : {});
     set({ busy: false });
   },
 

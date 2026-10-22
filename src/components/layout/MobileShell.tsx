@@ -220,7 +220,7 @@ function OpenTabs() {
 
 function SyncSheet() {
   const status = useSyncStore((state) => state.status);
-  const config = useSyncStore((state) => state.config);
+  const profile = useSyncStore((state) => state.profile);
   const syncNow = useSyncStore((state) => state.syncNow);
   const busy = useSyncStore((state) => state.busy);
   const setSettings = useUIStore((state) => state.setSettings);
@@ -231,7 +231,7 @@ function SyncSheet() {
       <div className="rounded-xl border bg-canvas p-3 hairline">
         <p className="text-[13px] text-muted">Хранилище</p>
         <p className="text-[15px] text-ink">
-          {status.adapterLabel ?? (config.adapter === "none" ? "Не подключено" : config.adapter)}
+          {status.adapterLabel ?? (profile?.adapter ? profile.adapter : "Не подключено")}
         </p>
         {status.message && <p className="mt-1 text-[12.5px] text-muted">{status.message}</p>}
         {status.pending > 0 && <p className="mt-1 text-[12.5px] text-warn">В очереди: {status.pending}</p>}
@@ -242,7 +242,7 @@ function SyncSheet() {
       <button
         type="button"
         onClick={() => void syncNow()}
-        disabled={busy || config.adapter === "none"}
+        disabled={busy || !profile?.adapter}
         className="flex touch-row items-center justify-center gap-2 rounded-xl bg-accent text-[15px] font-medium text-white disabled:opacity-50"
       >
         <RefreshCw size={16} className={busy ? "animate-spin" : ""} />

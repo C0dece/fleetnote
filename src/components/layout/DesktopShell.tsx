@@ -1,23 +1,21 @@
-import { CornerDownRight, ListTree, Share2, X } from "lucide-react";
+import { CornerDownRight, ListTree, Share2 } from "lucide-react";
 import { useUIStore, type RightTab } from "@/stores/uiStore";
+import { useSettingsStore } from "@/stores/settingsStore";
 import { useEditorStore } from "@/stores/editorStore";
 import { TitleBar } from "./TitleBar";
-import { TabStrip } from "./TabStrip";
-import { EditorPane } from "./EditorPane";
+import { LayoutView } from "./LayoutView";
 import { Sidebar } from "./Sidebar";
 import { StatusBar } from "./StatusBar";
 import { ResizeHandle } from "./ResizeHandle";
 import { BacklinksPanel } from "@/components/backlinks/BacklinksPanel";
 import { Outline } from "@/components/backlinks/Outline";
 import { LocalGraph } from "@/components/backlinks/LocalGraph";
-import { IconButton } from "@/components/ui/IconButton";
 
 /** Трёхколоночная раскладка ПК: дерево | редактор (+ split) | инспектор. */
 export function DesktopShell() {
   const ui = useUIStore();
   const active = useEditorStore((state) => state.active);
-  const split = useEditorStore((state) => state.split);
-  const setSplit = useEditorStore((state) => state.setSplit);
+  const appearance = useSettingsStore((state) => state.appearance);
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-canvas">
@@ -33,25 +31,7 @@ export function DesktopShell() {
         )}
 
         <main className="flex min-w-0 flex-1 flex-col">
-          <TabStrip />
-          <div className="flex min-h-0 flex-1">
-            <div className="flex min-w-0 flex-1 flex-col">
-              <EditorPane path={active} />
-            </div>
-            {split && (
-              <>
-                <div className="w-px shrink-0 bg-[var(--fn-hairline)]" />
-                <div className="relative flex min-w-0 flex-1 flex-col">
-                  <div className="absolute right-2 top-2 z-10">
-                    <IconButton title="Закрыть вторую панель" onClick={() => setSplit(null)}>
-                      <X size={14} />
-                    </IconButton>
-                  </div>
-                  <EditorPane path={split} />
-                </div>
-              </>
-            )}
-          </div>
+          <LayoutView />
         </main>
 
         {ui.rightOpen && (
@@ -70,7 +50,7 @@ export function DesktopShell() {
           </>
         )}
       </div>
-      <StatusBar />
+      {appearance.showStatusBar && <StatusBar />}
     </div>
   );
 }
