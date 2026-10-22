@@ -2,6 +2,11 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { fileURLToPath, URL } from "node:url";
+import { createRequire } from "node:module";
+
+// Версию показываем в «О программе»: берём из package.json, чтобы не
+// обновлять её в двух местах и не показывать устаревшую после релиза.
+const { version } = createRequire(import.meta.url)("./package.json");
 
 // Tauri sets TAURI_DEV_HOST when running `tauri android dev` / `tauri ios dev`
 // so the device can reach the dev server over the LAN.
@@ -29,6 +34,7 @@ export default defineConfig({
     hmr: host ? { protocol: "ws", host, port: 1421 } : undefined,
     watch: { ignored: ["**/src-tauri/**"] },
   },
+  define: { __APP_VERSION__: JSON.stringify(version) },
   envPrefix: ["VITE_", "TAURI_"],
   build: {
     outDir: singleFile ? "dist-single" : "dist",
