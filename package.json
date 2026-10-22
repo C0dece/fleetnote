@@ -1,6 +1,6 @@
 {
   "name": "fleetnote",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "private": true,
   "type": "module",
   "description": "Fleetnote — local-first Markdown knowledge base for desktop and mobile (Tauri v2 + React + CodeMirror 6)",

@@ -4,7 +4,7 @@ name: Сборка приложения
 # поэтому локально не нужны ни Rust, ни Visual Studio, ни Xcode.
 #
 # Запуск: вручную (Actions → Run workflow), по тегу v* или коммитом в main
-# со словом [release] в сообщении. Релиз с установщиками создаёт сам GitHub.
+# со словом [release] в сообщении.
 on:
   workflow_dispatch:
   push:
@@ -14,13 +14,64 @@ on:
       - main
 
 jobs:
-  build:
-    # На обычный коммит в main сборку не гоняем — только когда её явно просят
+  # Черновик релиза создаётся один раз: если его делать в каждой сборке,
+  # джобы гоняются за один тег и часть падает с «Published releases must have a valid tag».
+  prepare:
     if: >-
       github.event_name != 'push' ||
       startsWith(github.ref, 'refs/tags/') ||
       contains(github.event.head_commit.message, '[release]')
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    outputs:
+      release_id: ${{ steps.release.outputs.result }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
 
+      - name: Узнать версию приложения
+        id: version
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Создать или найти черновик релиза
+        id: release
+        uses: actions/github-script@v7
+        with:
+          result-encoding: string
+          script: |
+            const tag = `v${{ steps.version.outputs.version }}`;
+            const { owner, repo } = context.repo;
+            try {
+              const existing = await github.rest.repos.getReleaseByTag({ owner, repo, tag });
+              core.info(`Релиз ${tag} уже существует, дополняю его`);
+              return String(existing.data.id);
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+            const created = await github.rest.repos.createRelease({
+              owner,
+              repo,
+              tag_name: tag,
+              name: `Fleetnote ${tag}`,
+              draft: true,
+              prerelease: false,
+              body: [
+                "Установщики собраны автоматически из исходников этого репозитория.",
+                "",
+                "- Windows: `.exe` (NSIS) или `.msi`",
+                "- macOS: `.dmg` (universal — Intel и Apple Silicon)",
+                "- Linux: `.AppImage`, `.deb` или `.rpm`",
+                "",
+                "Приложение не подписано сертификатом разработчика: Windows покажет",
+                "SmartScreen («Подробнее» → «Выполнить в любом случае»), macOS —",
+                "предупреждение Gatekeeper (правый клик по приложению → «Открыть»).",
+              ].join("\n"),
+            });
+            return String(created.data.id);
+
+  build:
+    needs: prepare
     permissions:
       contents: write
 
@@ -77,18 +128,24 @@ jobs:
           # VITE_GDRIVE_* приходят из шага «Подставить ключи Google» через GITHUB_ENV
         with:
           args: ${{ matrix.args }}
-          # __VERSION__ подставляется из версии приложения в tauri.conf.json
-          tagName: v__VERSION__
-          releaseName: Fleetnote v__VERSION__
-          releaseBody: |
-            Установщики собраны автоматически из исходников этого репозитория.
+          releaseId: ${{ needs.prepare.outputs.release_id }}
 
-            - Windows: `.exe` (NSIS) или `.msi`
-            - macOS: `.dmg` (universal — Intel и Apple Silicon)
-            - Linux: `.AppImage` или `.deb`
-
-            Приложение не подписано сертификатом разработчика: Windows покажет
-            SmartScreen («Подробнее» → «Выполнить в любом случае»), macOS —
-            предупреждение Gatekeeper (правый клик по приложению → «Открыть»).
-          releaseDraft: false
-          prerelease: false
+  # Релиз становится видимым только когда все платформы собрались
+  publish:
+    needs: [prepare, build]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - name: Опубликовать релиз
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            await github.rest.repos.updateRelease({
+              owner,
+              repo,
+              release_id: Number("${{ needs.prepare.outputs.release_id }}"),
+              draft: false,
+            });
+            core.info("Релиз опубликован");
