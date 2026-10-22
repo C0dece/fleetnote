@@ -60,14 +60,21 @@ jobs:
 
       - run: npm ci
 
+      # Ключи Google берём из секрета: принимается и JSON из консоли, и отдельные значения.
+      # Сами значения в лог не попадают.
+      - name: Подставить ключи Google
+        shell: bash
+        env:
+          DESKTOPCLIENT: ${{ secrets.DESKTOPCLIENT }}
+          GDRIVE_CLIENT_JSON: ${{ secrets.GDRIVE_CLIENT_JSON }}
+          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+        run: node scripts/ci-google-keys.mjs
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Ключи OAuth вшиваются в сборку: тогда пользователю достаточно нажать «Войти».
-          # Положите их в Settings → Secrets and variables → Actions.
-          # Без секретов сборка проходит, просто приложение попросит свой Client ID.
-          VITE_GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
-          VITE_GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          # VITE_GDRIVE_* приходят из шага «Подставить ключи Google» через GITHUB_ENV
         with:
           args: ${{ matrix.args }}
           # __VERSION__ подставляется из версии приложения в tauri.conf.json

@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useVaultStore } from "@/stores/vaultStore";
+import { hasBuiltInClient } from "@/core/sync/adapters/gdriveAuth";
+import { secretsBackend } from "@/core/secrets";
 import { Row } from "../fields";
 
 export function AboutSection() {
@@ -12,11 +14,34 @@ export function AboutSection() {
   return (
     <div className="flex flex-col">
       <Row label="Fleetnote" hint="Markdown-база знаний для ПК и смартфонов">
-        <span className="text-[13px] text-muted">версия 0.3.1</span>
+        <span className="text-[13px] text-muted">версия 0.3.2</span>
       </Row>
 
       <Row label="В текущей базе" hint="Заметок в индексе">
         <span className="text-[13px] tabular-nums text-muted">{notes}</span>
+      </Row>
+
+      <Row
+        label="Вход в Google"
+        hint={
+          hasBuiltInClient()
+            ? "Ключ приложения вшит в сборку — достаточно нажать «Войти через Google»"
+            : "Ключа в сборке нет: приложение попросит собственный Client ID"
+        }
+      >
+        <span className={`text-[13px] ${hasBuiltInClient() ? "text-ok" : "text-muted"}`}>
+          {hasBuiltInClient() ? "ключ встроен" : "ключа нет"}
+        </span>
+      </Row>
+
+      <Row label="Хранилище секретов" hint="Куда ложатся пароли, ключи и токены">
+        <span className="text-[13px] text-muted">
+          {secretsBackend() === "system"
+            ? "системное"
+            : secretsBackend() === "file"
+              ? "файл приложения"
+              : "хранилище вкладки"}
+        </span>
       </Row>
 
       <Row

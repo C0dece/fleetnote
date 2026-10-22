@@ -105,8 +105,9 @@ rclone и плагины Obsidian. Google для установленных пр
 Credentials → Create credentials → OAuth client ID → **Desktop app**) и положите
 значения туда, где их возьмёт сборка:
 
-- **для релизов**: GitHub → Settings → Secrets and variables → Actions →
-  `GDRIVE_CLIENT_ID` и `GDRIVE_CLIENT_SECRET`; workflow подставит их сам;
+- **для релизов**: GitHub → Settings → Secrets and variables → Actions. Подойдёт любой вариант:
+  секрет `DESKTOPCLIENT` (или `GDRIVE_CLIENT_JSON`) с JSON-файлом, который отдала консоль,
+  либо пара `GDRIVE_CLIENT_ID` и `GDRIVE_CLIENT_SECRET`. Сборка разберёт и то, и другое;
 - **локально**: скопируйте `.env.example` в `.env.local` и заполните (файл в `.gitignore`).
 
 После этого в настройках синхронизации не спрашиваются никакие ключи — остаётся
