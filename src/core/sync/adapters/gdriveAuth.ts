@@ -2,6 +2,20 @@
  * OAuth 2.0 PKCE для Google Drive без client_secret.
  * На ПК используется loopback-редирект, на мобильных — deep link схемы приложения.
  */
+/**
+ * Ключи, вшитые в сборку. Для установленных приложений Google не считает
+ * client secret секретом: он лежит внутри бинарника, как у rclone и ему подобных.
+ * Если ключей нет, приложение попросит пользователя создать свои.
+ */
+export const BUILT_IN_CLIENT = {
+  id: (import.meta.env.VITE_GDRIVE_CLIENT_ID ?? "").trim(),
+  secret: (import.meta.env.VITE_GDRIVE_CLIENT_SECRET ?? "").trim(),
+};
+
+export function hasBuiltInClient(): boolean {
+  return BUILT_IN_CLIENT.id.length > 0;
+}
+
 const AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
 export const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";

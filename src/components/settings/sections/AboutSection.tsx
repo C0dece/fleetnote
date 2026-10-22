@@ -12,7 +12,7 @@ export function AboutSection() {
   return (
     <div className="flex flex-col">
       <Row label="Fleetnote" hint="Markdown-база знаний для ПК и смартфонов">
-        <span className="text-[13px] text-muted">версия 0.3.0</span>
+        <span className="text-[13px] text-muted">версия 0.3.1</span>
       </Row>
 
       <Row label="В текущей базе" hint="Заметок в индексе">

@@ -2,7 +2,13 @@ import { useState } from "react";
 import { CheckCircle2, ExternalLink, Loader2, LogIn } from "lucide-react";
 import { isTauri } from "@/core/fs";
 import { signInWithGoogle } from "@/core/sync/adapters/googleSignIn";
-import { buildAuthUrl, createPkcePair, exchangeCode } from "@/core/sync/adapters/gdriveAuth";
+import {
+  BUILT_IN_CLIENT,
+  buildAuthUrl,
+  createPkcePair,
+  exchangeCode,
+  hasBuiltInClient,
+} from "@/core/sync/adapters/gdriveAuth";
 import { TextField } from "./fields";
 
 const CONSOLE_URL = "https://console.cloud.google.com/apis/credentials";
@@ -33,8 +39,10 @@ export function GoogleAuthBlock({
   const [manual, setManual] = useState<{ verifier: string; redirectUri: string } | null>(null);
   const [code, setCode] = useState("");
 
-  const clientId = options.clientId ?? import.meta.env.VITE_GDRIVE_CLIENT_ID ?? "";
-  const clientSecret = options.clientSecret || undefined;
+  // Ключ из сборки важнее введённого вручную: тогда пользователю ничего заполнять не нужно
+  const clientId = BUILT_IN_CLIENT.id || (options.clientId ?? "");
+  const clientSecret = BUILT_IN_CLIENT.secret || options.clientSecret || undefined;
+  const builtIn = hasBuiltInClient();
   const signedIn = Boolean(options.accessToken);
 
   const saveTokens = (tokens: { accessToken: string; refreshToken?: string; expiresAt: number }) => {
@@ -111,14 +119,22 @@ export function GoogleAuthBlock({
             <CheckCircle2 size={14} /> Доступ выдан
           </span>
         )}
-        <button
-          type="button"
-          onClick={() => setHelp((value) => !value)}
-          className="ml-auto text-[12.5px] text-muted hover:text-ink"
-        >
-          {help ? "Скрыть инструкцию" : "Где взять Client ID?"}
-        </button>
+        {!builtIn && (
+          <button
+            type="button"
+            onClick={() => setHelp((value) => !value)}
+            className="ml-auto text-[12.5px] text-muted hover:text-ink"
+          >
+            {help ? "Скрыть инструкцию" : "Где взять Client ID?"}
+          </button>
+        )}
       </div>
+
+      {builtIn && !signedIn && (
+        <p className="text-[12.5px] text-muted">
+          Ключ приложения уже встроен в сборку — просто нажмите «Войти через Google».
+        </p>
+      )}
 
       {busy && isTauri() && (
         <p className="text-[12.5px] text-muted">
@@ -142,7 +158,7 @@ export function GoogleAuthBlock({
         </div>
       )}
 
-      {help && (
+      {help && !builtIn && (
         <div className="rounded-lg border bg-panel p-3 hairline">
           <ol className="flex list-decimal flex-col gap-1 pl-4 text-[12.5px] leading-snug text-muted">
             {STEPS.map((step) => (

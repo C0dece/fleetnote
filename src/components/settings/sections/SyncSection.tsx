@@ -5,6 +5,7 @@ import { useSyncStore } from "@/stores/syncStore";
 import { ADAPTER_FIELDS } from "@/core/sync/adapters";
 import type { AdapterId } from "@/core/sync/types";
 import { GoogleAuthBlock } from "../GoogleAuthBlock";
+import { hasBuiltInClient } from "@/core/sync/adapters/gdriveAuth";
 import { secretsBackend } from "@/core/secrets";
 import { Row, Segmented, SelectField, Slider, TextField, Toggle } from "../fields";
 
@@ -91,18 +92,22 @@ export function SyncSection() {
 
       {adapter !== "none" && (
         <div className="flex flex-col gap-2 border-b py-3 hairline">
-          {ADAPTER_FIELDS[adapter].map((field) => (
-            <label key={field.key} className="flex flex-col gap-1 text-[12.5px] text-muted">
-              {field.label}
-              <TextField
-                wide
-                type={field.type === "password" ? "password" : "text"}
-                value={options[field.key] ?? ""}
-                placeholder={field.placeholder}
-                onChange={(value) => setOptions({ ...options, [field.key]: value })}
-              />
-            </label>
-          ))}
+          {ADAPTER_FIELDS[adapter]
+            .filter(
+              (field) => !(adapter === "gdrive" && hasBuiltInClient() && field.key.startsWith("client")),
+            )
+            .map((field) => (
+              <label key={field.key} className="flex flex-col gap-1 text-[12.5px] text-muted">
+                {field.label}
+                <TextField
+                  wide
+                  type={field.type === "password" ? "password" : "text"}
+                  value={options[field.key] ?? ""}
+                  placeholder={field.placeholder}
+                  onChange={(value) => setOptions({ ...options, [field.key]: value })}
+                />
+              </label>
+            ))}
           {adapter === "gdrive" && <GoogleAuthBlock options={options} setOptions={setOptions} />}
           <div className="flex items-center gap-2">
             <button

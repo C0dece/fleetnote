@@ -4,6 +4,7 @@ import { useVaultStore } from "@/stores/vaultStore";
 import { isTauri } from "@/core/fs";
 import { describeProfile, type VaultProfile } from "@/core/vault/profiles";
 import { ADAPTER_FIELDS } from "@/core/sync/adapters";
+import { hasBuiltInClient } from "@/core/sync/adapters/gdriveAuth";
 import type { AdapterId } from "@/core/sync/types";
 import { DragBar } from "./WindowChrome";
 
@@ -209,18 +210,20 @@ function RemoteForm({ onBack }: { onBack(): void }) {
             className="rounded-lg border bg-canvas px-3 py-2 text-[15px] text-ink outline-none hairline focus:border-accent"
           />
         </label>
-        {ADAPTER_FIELDS[adapter].map((field) => (
-          <label key={field.key} className="flex flex-col gap-1 text-[12.5px] text-muted">
-            {field.label}
-            <input
-              type={field.type === "password" ? "password" : "text"}
-              value={options[field.key] ?? ""}
-              placeholder={field.placeholder}
-              onChange={(event) => setOptions({ ...options, [field.key]: event.target.value })}
-              className="rounded-lg border bg-canvas px-3 py-2 text-[15px] text-ink outline-none hairline focus:border-accent"
-            />
-          </label>
-        ))}
+        {ADAPTER_FIELDS[adapter]
+          .filter((field) => !(adapter === "gdrive" && hasBuiltInClient() && field.key.startsWith("client")))
+          .map((field) => (
+            <label key={field.key} className="flex flex-col gap-1 text-[12.5px] text-muted">
+              {field.label}
+              <input
+                type={field.type === "password" ? "password" : "text"}
+                value={options[field.key] ?? ""}
+                placeholder={field.placeholder}
+                onChange={(event) => setOptions({ ...options, [field.key]: event.target.value })}
+                className="rounded-lg border bg-canvas px-3 py-2 text-[15px] text-ink outline-none hairline focus:border-accent"
+              />
+            </label>
+          ))}
         {adapter === "gdrive" && (
           <p className="text-[12px] text-muted">
             Для Google Диска нужен вход: подключите хранилище в настройках после открытия базы — там есть
