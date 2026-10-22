@@ -1,14 +1,31 @@
 /**
- * Шаг сборки: достаёт ключи Google из секретов и отдаёт их Vite.
- * Значения не печатаются и не сохраняются — только длины и факт наличия,
- * чтобы по сборке можно было понять, что пошло не так.
+ * Шаг сборки: достаёт ключи OAuth-клиента Google из секретов репозитория
+ * и отдаёт их Vite, чтобы в готовом приложении вход работал одной кнопкой.
+ *
+ * Имя секрета легко написать иначе, поэтому проверяем несколько привычных
+ * вариантов. Значения не печатаются и никуда не сохраняются: в отчёт идут
+ * только имена секретов, длины и факт находки.
  */
 import { appendFileSync, writeFileSync } from "node:fs";
 import { extractGoogleClient } from "./google-client.mjs";
 
-const rawSecret = process.env.GDRIVE_CLIENT_JSON ?? process.env.DESKTOPCLIENT ?? "";
+/** Имена секретов, в которых ищем файл клиента из консоли Google. */
+const ИМЕНА = [
+  "GDRIVE_CLIENT_JSON",
+  "DESKTOPCLIENT",
+  "DESKTOP_CLIENT",
+  "DESKTOPCLIENT_JSON",
+  "GOOGLE_CLIENT_JSON",
+  "GOOGLE_CLIENT",
+  "GDRIVE_CLIENT",
+];
+
+const заполненные = ИМЕНА.filter((имя) => (process.env[имя] ?? "").trim().length > 0);
+const имяСекрета = заполненные[0] ?? null;
+const сырой = имяСекрета ? process.env[имяСекрета].trim() : "";
+
 const { id, secret, source, error } = extractGoogleClient({
-  json: rawSecret,
+  json: сырой,
   id: process.env.GDRIVE_CLIENT_ID ?? "",
   secret: process.env.GDRIVE_CLIENT_SECRET ?? "",
 });
@@ -21,8 +38,10 @@ if (envFile) {
 }
 
 const info = {
-  секретПередан: rawSecret.length > 0,
-  длинаСекрета: rawSecret.length,
+  имяСекрета,
+  проверенныеИмена: ИМЕНА,
+  секретПередан: сырой.length > 0,
+  длинаСекрета: сырой.length,
   откудаВзято: source,
   clientIdНайден: Boolean(id),
   длинаClientId: id.length,

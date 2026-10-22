@@ -117,6 +117,11 @@ jobs:
         shell: bash
         env:
           DESKTOPCLIENT: ${{ secrets.DESKTOPCLIENT }}
+          DESKTOP_CLIENT: ${{ secrets.DESKTOP_CLIENT }}
+          DESKTOPCLIENT_JSON: ${{ secrets.DESKTOPCLIENT_JSON }}
+          GOOGLE_CLIENT_JSON: ${{ secrets.GOOGLE_CLIENT_JSON }}
+          GOOGLE_CLIENT: ${{ secrets.GOOGLE_CLIENT }}
+          GDRIVE_CLIENT: ${{ secrets.GDRIVE_CLIENT }}
           GDRIVE_CLIENT_JSON: ${{ secrets.GDRIVE_CLIENT_JSON }}
           GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
           GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}

@@ -105,9 +105,16 @@ rclone и плагины Obsidian. Google для установленных пр
 Credentials → Create credentials → OAuth client ID → **Desktop app**) и положите
 значения туда, где их возьмёт сборка:
 
-- **для релизов**: GitHub → Settings → Secrets and variables → Actions. Подойдёт любой вариант:
-  секрет `DESKTOPCLIENT` (или `GDRIVE_CLIENT_JSON`) с JSON-файлом, который отдала консоль,
-  либо пара `GDRIVE_CLIENT_ID` и `GDRIVE_CLIENT_SECRET`. Сборка разберёт и то, и другое;
+- **для релизов**: GitHub → репозиторий → Settings → Secrets and variables → **Actions** →
+  вкладка **Secrets** → New repository secret. Именно эта страница: секреты из
+  Codespaces, Dependabot и из настроек окружения Claude сборке не видны.
+  Имя — `DESKTOPCLIENT` (принимаются также `GDRIVE_CLIENT_JSON`, `GOOGLE_CLIENT_JSON`,
+  `DESKTOP_CLIENT`, `GDRIVE_CLIENT`), значение — JSON-файл, который отдала консоль.
+  Можно вместо него положить пару `GDRIVE_CLIENT_ID` и `GDRIVE_CLIENT_SECRET`;
+  формат значения любой: целый файл, его внутренности без внешних скобок или
+  просто строки с `client_id` и `client_secret`.
+  Проверка: к каждому релизу прикладывается `build-info.json` — там видно, какой
+  секрет подхватился и нашлись ли ключи (сами значения в отчёт не попадают);
 - **локально**: скопируйте `.env.example` в `.env.local` и заполните (файл в `.gitignore`).
 
 После этого в настройках синхронизации не спрашиваются никакие ключи — остаётся
