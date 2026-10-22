@@ -27,6 +27,7 @@ title: Заметка о синхронизации
 
   it("находит вики-ссылки с подписью и якорем", () => {
     expect(parsed.links.map((link) => link.target)).toEqual(["Другая заметка", "Третья"]);
+    expect(parsed.links.every((link) => !link.embed)).toBe(true);
     expect(parsed.links[0].alias).toBe("подпись");
     expect(parsed.links[1].heading).toBe("Раздел");
   });
@@ -42,6 +43,14 @@ title: Заметка о синхронизации
   it("не индексирует содержимое блоков кода", () => {
     expect(parsed.links.some((link) => link.target === "Ссылка в коде")).toBe(false);
     expect(maskCode("`[[нет]]`").trim()).toBe("");
+  });
+
+  it("вложение попадает в список один раз и помечено как вложение", () => {
+    const embedded = parseNote("файл", "текст ![[картинка.png]] и ссылка [[Заметка]]");
+    expect(embedded.links.map((link) => [link.target, link.embed])).toEqual([
+      ["картинка.png", true],
+      ["Заметка", false],
+    ]);
   });
 
   it("переписывает ссылки при переименовании", () => {

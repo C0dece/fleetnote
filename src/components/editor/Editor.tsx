@@ -10,6 +10,8 @@ import { fleetnoteCompletion } from "./extensions/completion";
 import { fleetnoteEditorTheme, fleetnoteHighlight } from "./extensions/theme";
 import { attachmentPaste } from "./extensions/attachments";
 import { hideFrontmatter } from "./extensions/frontmatter";
+import { imageEmbeds, type EmbedResolver } from "./extensions/embeds";
+import { tablePreview } from "./extensions/tables";
 import { formattingKeymap } from "./extensions/commands";
 
 export interface EditorHandle {
@@ -28,6 +30,8 @@ export interface EditorProps {
   spellcheck?: boolean;
   /** Прятать ли блок свойств: он редактируется отдельной панелью. */
   hideFrontmatter?: boolean;
+  /** Как превратить `![[файл]]` в картинку и что делать по клику. */
+  embeds?: EmbedResolver;
   indentSize?: number;
   slashMenu?: boolean;
   onChange(text: string): void;
@@ -86,6 +90,18 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(prop
               onOpenLink: (target) => latest.current.onOpenLink(target),
               onOpenTag: (tag) => latest.current.onOpenTag(tag),
             }),
+            tablePreview(() => latest.current.mode !== "source"),
+            ...(props.embeds
+              ? [
+                  imageEmbeds(
+                    {
+                      resolve: (target) => latest.current.embeds?.resolve(target) ?? Promise.resolve(null),
+                      open: (target) => latest.current.embeds?.open(target),
+                    },
+                    () => latest.current.mode !== "source",
+                  ),
+                ]
+              : []),
           ]),
       fleetnoteCompletion({
         notes: () => latest.current.notes(),

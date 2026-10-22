@@ -7,6 +7,8 @@ export interface WikiLink {
   alias?: string;
   from: number;
   to: number;
+  /** `![[…]]` — встроенное вложение, а не обычная ссылка. */
+  embed: boolean;
 }
 
 export interface Heading {
@@ -26,8 +28,8 @@ export interface ParsedNote {
   excerpt: string;
 }
 
-const WIKILINK_RE = /\[\[([^\]|#]+)(?:#([^\]|]+))?(?:\|([^\]]+))?\]\]/g;
-const EMBED_RE = /!\[\[([^\]|#]+)(?:#([^\]|]+))?(?:\|([^\]]+))?\]\]/g;
+/** Одна регулярка на ссылки и вложения: иначе `![[файл]]` попадает в список дважды. */
+const WIKILINK_RE = /(!?)\[\[([^\]|#]+)(?:#([^\]|]+))?(?:\|([^\]]+))?\]\]/g;
 const MD_LINK_RE = /\[[^\]]*\]\(([^)\s]+)[^)]*\)/g;
 const TAG_RE = /(?:^|[\s(])#([\p{L}\p{N}_][\p{L}\p{N}_/-]*)/gu;
 const FENCE_RE = /^(?:\s{0,3})(`{3,}|~{3,})/;
@@ -71,22 +73,21 @@ export function parseFrontmatter(text: string): { frontmatter: Record<string, st
 
 export function parseWikiLinks(masked: string): WikiLink[] {
   const links: WikiLink[] = [];
-  for (const re of [WIKILINK_RE, EMBED_RE]) {
-    re.lastIndex = 0;
-    let match: RegExpExecArray | null;
-    while ((match = re.exec(masked))) {
-      const target = match[1].trim();
-      if (!target) continue;
-      links.push({
-        target,
-        heading: match[2]?.trim(),
-        alias: match[3]?.trim(),
-        from: match.index,
-        to: match.index + match[0].length,
-      });
-    }
+  WIKILINK_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = WIKILINK_RE.exec(masked))) {
+    const target = match[2].trim();
+    if (!target) continue;
+    links.push({
+      target,
+      heading: match[3]?.trim(),
+      alias: match[4]?.trim(),
+      from: match.index,
+      to: match.index + match[0].length,
+      embed: match[1] === "!",
+    });
   }
-  return links.sort((a, b) => a.from - b.from);
+  return links;
 }
 
 export function parseTags(masked: string): string[] {
@@ -178,9 +179,9 @@ function excerptOf(body: string, limit = 180): string {
 
 /** Переписать `[[Старое имя]]` на `[[Новое имя]]` при переименовании заметки. */
 export function rewriteWikiLinks(text: string, from: string, to: string): string {
-  return text.replace(WIKILINK_RE, (full, target: string, heading?: string, alias?: string) => {
+  return text.replace(WIKILINK_RE, (full, bang: string, target: string, heading?: string, alias?: string) => {
     if (target.trim().toLowerCase() !== from.toLowerCase()) return full;
     const tail = `${heading ? `#${heading}` : ""}${alias ? `|${alias}` : ""}`;
-    return `[[${to}${tail}]]`;
+    return `${bang}[[${to}${tail}]]`;
   });
 }

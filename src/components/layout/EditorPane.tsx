@@ -7,6 +7,7 @@ import { useSettingsStore, type EditorMode } from "@/stores/settingsStore";
 import { useIsMobileLayout } from "@/hooks/useMediaQuery";
 import { useDialogStore } from "@/components/ui/dialogs";
 import { Editor, type EditorHandle } from "@/components/editor/Editor";
+import { assetUrl } from "@/core/fs/assets";
 import { ReadingView } from "@/components/editor/ReadingView";
 import { NoteToolbar } from "@/components/editor/NoteToolbar";
 import { PropertiesPanel } from "@/components/editor/PropertiesPanel";
@@ -76,6 +77,32 @@ export function EditorPane({ path, handle }: EditorPaneProps) {
     if (created) await openNote(created);
   };
 
+  /** `![[вложение]]` → ссылка на файл базы; если файла нет, открываем вкладку по пути. */
+  const readingEmbeds = {
+    resolveNote: (target: string) => vault.resolveLink(target, path),
+    resolveFile: (target: string) => vault.manager?.resolveFile(target, path) ?? null,
+    assetUrl: async (filePath: string) => {
+      const fs = vault.manager?.fs;
+      return fs ? assetUrl(fs, filePath) : "";
+    },
+    readNote: (notePath: string) => vault.readNote(notePath).catch(() => ""),
+    open: (target: string) => void openNote(target),
+  };
+
+  const embeds = {
+    resolve: async (target: string) => {
+      const manager = vault.manager;
+      if (!manager) return null;
+      const resolved = manager.resolveFile(target, path);
+      if (!resolved) return null;
+      return assetUrl(manager.fs, resolved);
+    },
+    open: (target: string) => {
+      const resolved = vault.manager?.resolveFile(target, path);
+      if (resolved) void openNote(resolved);
+    },
+  };
+
   const openTag = (tag: string) => {
     setTagFilter(tag);
     setSheet("search");
@@ -126,7 +153,13 @@ export function EditorPane({ path, handle }: EditorPaneProps) {
 
       <div className="min-h-0 flex-1">
         {mode === "reading" ? (
-          <ReadingView text={text} onOpenLink={openLink} onOpenTag={openTag} onToggleTask={toggleTask} />
+          <ReadingView
+            text={text}
+            embeds={readingEmbeds}
+            onOpenLink={openLink}
+            onOpenTag={openTag}
+            onToggleTask={toggleTask}
+          />
         ) : (
           <Editor
             ref={editorRef}
@@ -135,6 +168,7 @@ export function EditorPane({ path, handle }: EditorPaneProps) {
             mode={mode === "source" ? "source" : "live"}
             spellcheck={editorSettings.spellcheck}
             hideFrontmatter={editorSettings.showProperties}
+            embeds={embeds}
             indentSize={editorSettings.indentSize}
             slashMenu={editorSettings.slashMenu}
             onChange={(next) => setDraft(path, next)}

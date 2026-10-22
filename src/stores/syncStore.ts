@@ -5,6 +5,7 @@ import { createAdapter } from "@/core/sync/adapters";
 import type { AdapterId } from "@/core/sync/types";
 import type { VaultProfile } from "@/core/vault/profiles";
 import { saveProfile } from "@/core/vault/profiles";
+import { isSecretField, restoreSecrets, stashSecrets } from "@/core/secrets";
 import { settings, useSettingsStore, type SyncDirection } from "./settingsStore";
 
 interface SyncStoreState {
@@ -55,8 +56,16 @@ export const useSyncStore = create<SyncStoreState>((set, get) => ({
 
     if (profile.adapter && profile.options) {
       try {
+        // Пароли и токены живут в хранилище секретов, в профиле остаются только открытые поля
+        const full = await restoreSecrets(profile.id, profile.options);
+        if (Object.keys(profile.options).some(isSecretField)) {
+          const safe = await stashSecrets(profile.id, profile.options);
+          const cleaned = { ...profile, options: safe };
+          saveProfile(cleaned);
+          set({ profile: cleaned });
+        }
         const adapter = await createAdapter(profile.adapter);
-        await adapter.connect(profile.options);
+        await adapter.connect(full);
         await engine.setAdapter(adapter);
         if (settings().sync.syncOnStart) {
           const report = await engine.syncAll();
@@ -95,7 +104,8 @@ export const useSyncStore = create<SyncStoreState>((set, get) => ({
       await adapter.connect(options);
       await engine.setAdapter(adapter);
       if (profile) {
-        const updated: VaultProfile = { ...profile, adapter: adapterId, options };
+        const safe = await stashSecrets(profile.id, options);
+        const updated: VaultProfile = { ...profile, adapter: adapterId, options: safe };
         saveProfile(updated);
         set({ profile: updated });
       }

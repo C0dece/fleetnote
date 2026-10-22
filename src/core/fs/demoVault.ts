@@ -43,7 +43,14 @@ Fleetnote работает по принципу **local-first**: ввод ни�
 3. Конфликт решается построчным слиянием, а при пересечении правок рядом
    появляется файл \`… (Conflict YYYY-MM-DD HH-mm).md\`.
 
+![[схема.svg]]
+
 Поддерживаются: локальная папка, Google Drive, WebDAV (Nextcloud, Яндекс.Диск), S3.
+
+| Хранилище | Где источник истины | Офлайн |
+| --- | --- | --- |
+| Папка на диске | на устройстве | всегда |
+| WebDAV / S3 / Google Диск | на сервере | работает из кэша |
 
 См. также [[Добро пожаловать]] и [[Мобильный режим]]. #синхронизация #облако
 `,
@@ -57,6 +64,15 @@ Fleetnote работает по принципу **local-first**: ввод ни�
 
 #мобильный #дизайн
 `,
+  "attachments/схема.svg": `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 140" width="320" height="140">
+  <rect width="320" height="140" rx="12" fill="#15181E"/>
+  <rect x="24" y="40" width="90" height="60" rx="10" fill="#6366F1"/>
+  <rect x="206" y="40" width="90" height="60" rx="10" fill="#10B981"/>
+  <path d="M120 70 H200" stroke="#9AA1AC" stroke-width="3"/>
+  <path d="M190 62 L202 70 L190 78 Z" fill="#9AA1AC"/>
+  <text x="69" y="75" font-family="sans-serif" font-size="13" fill="#fff" text-anchor="middle">устройство</text>
+  <text x="251" y="75" font-family="sans-serif" font-size="13" fill="#0D0F12" text-anchor="middle">хранилище</text>
+</svg>`,
   "Daily/2026-10-21.md": `# 2026-10-21
 
 - [ ] Разобрать входящие

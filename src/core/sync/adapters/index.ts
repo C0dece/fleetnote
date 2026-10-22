@@ -43,6 +43,12 @@ export const ADAPTER_FIELDS: Record<
   ],
   gdrive: [
     { key: "clientId", label: "OAuth Client ID", placeholder: "…apps.googleusercontent.com" },
+    {
+      key: "clientSecret",
+      label: "Client secret (у клиента типа «Desktop app» он есть)",
+      type: "password",
+      placeholder: "GOCSPX-…",
+    },
     { key: "folder", label: "Папка на Диске", placeholder: "Fleetnote" },
   ],
   s3: [

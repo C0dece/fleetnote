@@ -8,6 +8,12 @@ import {
   FolderOpen,
   FolderPlus,
   MoreHorizontal,
+  Film,
+  FileCode,
+  FileType,
+  Image as ImageIcon,
+  Music,
+  Paperclip,
   Pin,
   PinOff,
   SquareDashedMousePointer,
@@ -18,12 +24,14 @@ import { useUIStore } from "@/stores/uiStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useDialogStore } from "@/components/ui/dialogs";
 import { basename, dirname, stem } from "@/core/fs/paths";
+import { fileKind, type FileKind } from "@/core/fs/assets";
 
 interface Row {
   path: string;
   name: string;
   isDir: boolean;
   isCanvas?: boolean;
+  kind?: FileKind;
   depth: number;
   expanded?: boolean;
   mtime?: number;
@@ -79,13 +87,15 @@ export function FileTree({ touch = false }: { touch?: boolean }) {
     for (const folder of folders) {
       push(dirname(folder), { path: folder, name: basename(folder), isDir: true, depth: 0 });
     }
-    for (const canvas of manager?.otherFiles ?? []) {
-      if (!canvas.toLowerCase().endsWith(".canvas")) continue;
-      push(dirname(canvas), {
-        path: canvas,
-        name: basename(canvas).replace(/\.canvas$/i, ""),
+    for (const [file, meta] of manager?.files ?? []) {
+      const canvas = file.toLowerCase().endsWith(".canvas");
+      push(dirname(file), {
+        path: file,
+        name: canvas ? basename(file).replace(/\.canvas$/i, "") : basename(file),
         isDir: false,
-        isCanvas: true,
+        isCanvas: canvas,
+        kind: fileKind(file),
+        mtime: meta.mtime,
         depth: 0,
       });
     }
@@ -277,10 +287,8 @@ export function FileTree({ touch = false }: { touch?: boolean }) {
                       {row.expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                       {row.expanded ? <FolderOpen size={15} /> : <Folder size={15} />}
                     </>
-                  ) : row.isCanvas ? (
-                    <SquareDashedMousePointer size={15} className="ml-3.5 shrink-0 text-accent opacity-80" />
                   ) : (
-                    <FileText size={15} className="ml-3.5 shrink-0 opacity-70" />
+                    <FileIcon row={row} />
                   )}
                   <span className={`truncate ${isActive ? "text-ink" : ""}`}>{row.name}</span>
                   {pins.includes(row.path) && <Pin size={11} className="shrink-0 text-accent" />}
@@ -326,6 +334,28 @@ export function FileTree({ touch = false }: { touch?: boolean }) {
       {menu && <RowMenu {...menu} onClose={() => setMenu(null)} />}
     </div>
   );
+}
+
+/** Иконка по типу файла: заметка, холст, картинка, PDF, звук, видео, прочее. */
+function FileIcon({ row }: { row: Row }) {
+  const className = "ml-3.5 shrink-0 opacity-80";
+  if (row.isCanvas) return <SquareDashedMousePointer size={15} className={`${className} text-accent`} />;
+  switch (row.kind) {
+    case "image":
+      return <ImageIcon size={15} className={className} />;
+    case "pdf":
+      return <FileType size={15} className={className} />;
+    case "audio":
+      return <Music size={15} className={className} />;
+    case "video":
+      return <Film size={15} className={className} />;
+    case "text":
+      return <FileCode size={15} className={className} />;
+    case "other":
+      return <Paperclip size={15} className={className} />;
+    default:
+      return <FileText size={15} className={`${className} opacity-70`} />;
+  }
 }
 
 function RowMenu({
@@ -378,6 +408,9 @@ function RowMenu({
       const created = await vault.createNote(folder, "Без названия");
       if (created) await editor.openNote(created);
     }
+    if (action === "import") {
+      await vault.importFromDisk(folder);
+    }
     if (action === "new-canvas") {
       const created = await vault.createCanvas(folder);
       if (created) await editor.openNote(created);
@@ -414,6 +447,9 @@ function RowMenu({
         )}
         <MenuItem onClick={() => void act("new-note")}>
           <FilePlus2 size={14} /> Новая заметка{isRoot ? " в корне" : ""}
+        </MenuItem>
+        <MenuItem onClick={() => void act("import")}>
+          <Paperclip size={14} /> Добавить файл
         </MenuItem>
         <MenuItem onClick={() => void act("new-canvas")}>
           <SquareDashedMousePointer size={14} /> Новый холст

@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { MemoryVaultFs, TauriVaultFs, isTauri } from "@/core/fs";
-import { dirname, extname, join, sanitizeName } from "@/core/fs/paths";
+import { dirname, extname, join, sanitizeName, uniquePath } from "@/core/fs/paths";
 import type { VaultFs } from "@/core/fs/types";
 import { VaultManager, type NoteMeta, type ResolvedLink } from "@/core/vault/vaultManager";
 import {
@@ -57,6 +57,16 @@ interface VaultState {
   moveEntry(path: string, targetFolder: string): Promise<string | null>;
   removeEntry(path: string): Promise<void>;
   saveAttachment(file: File): Promise<string | null>;
+  /** Положить в базу файлы любого типа (из проводника, перетаскиванием или вставкой). */
+  importFiles(files: File[], folder?: string): Promise<string[]>;
+  /** Положить в базу файлы по абсолютным путям ОС. */
+  importPaths(paths: string[], folder?: string): Promise<string[]>;
+  /** Диалог выбора файлов на диске. */
+  importFromDisk(folder?: string): Promise<string[]>;
+  /** Открыть файл тем приложением, которым его открывает система. */
+  openExternally(path: string): Promise<void>;
+  revealInFolder(path: string): Promise<void>;
+  absolutePath(path: string): string | null;
   /** Запись файла, который не является заметкой (например холста `.canvas`). */
   writeRaw(path: string, text: string): Promise<void>;
   readRaw(path: string): Promise<string>;
@@ -354,10 +364,81 @@ export const useVaultStore = create<VaultState>((set, get) => ({
     let counter = 2;
     while (await manager.fs.exists(path)) path = join(folder, `${base} ${counter++}.canvas`);
     await manager.fs.writeText(path, JSON.stringify({ nodes: [], edges: [] }, null, 2));
-    manager.otherFiles.add(path);
+    manager.files.set(path, { mtime: Date.now(), size: 0 });
     set({ revision: get().revision + 1 });
     useSyncStore.getState().notifyChange(path);
     return path;
+  },
+
+  async importFiles(files, folder) {
+    const { manager } = get();
+    if (!manager) return [];
+    const target = folder ?? settings().vault.attachmentsFolder ?? "";
+    if (target) await manager.fs.mkdir(target);
+    const saved: string[] = [];
+    for (const file of files) {
+      const name = sanitizeName(file.name) || `файл-${Date.now()}`;
+      const path = uniquePath(
+        join(target, name),
+        (candidate) => manager.files.has(candidate) || manager.notes.has(candidate),
+      );
+      await manager.fs.writeBinary(path, new Uint8Array(await file.arrayBuffer()));
+      manager.files.set(path, { mtime: Date.now(), size: file.size });
+      useSyncStore.getState().notifyChange(path);
+      saved.push(path);
+    }
+    set({ revision: get().revision + 1 });
+    return saved;
+  },
+
+  async importPaths(paths, folder) {
+    const { manager } = get();
+    if (!manager || !isTauri()) return [];
+    const { readFile } = await import("@tauri-apps/plugin-fs");
+    const target = folder ?? settings().vault.attachmentsFolder ?? "";
+    if (target) await manager.fs.mkdir(target);
+    const saved: string[] = [];
+    for (const source of paths) {
+      const name = sanitizeName(source.split(/[\\/]/).pop() ?? "файл");
+      const path = uniquePath(
+        join(target, name),
+        (candidate) => manager.files.has(candidate) || manager.notes.has(candidate),
+      );
+      await manager.fs.writeBinary(path, await readFile(source));
+      manager.files.set(path, { mtime: Date.now(), size: 0 });
+      useSyncStore.getState().notifyChange(path);
+      saved.push(path);
+    }
+    await get().rescan();
+    return saved;
+  },
+
+  async importFromDisk(folder) {
+    if (!isTauri()) return [];
+    const { open } = await import("@tauri-apps/plugin-dialog");
+    const picked = await open({ multiple: true, title: "Выберите файлы для базы" });
+    const paths = Array.isArray(picked) ? picked : picked ? [picked] : [];
+    return get().importPaths(paths, folder);
+  },
+
+  absolutePath(path) {
+    const { manager } = get();
+    if (!manager || manager.fs.kind !== "tauri") return null;
+    return `${manager.fs.root.replace(/[\\/]+$/, "")}/${path}`;
+  },
+
+  async openExternally(path) {
+    const absolute = get().absolutePath(path);
+    if (!absolute) return;
+    const { openPath } = await import("@tauri-apps/plugin-opener");
+    await openPath(absolute);
+  },
+
+  async revealInFolder(path) {
+    const absolute = get().absolutePath(path);
+    if (!absolute) return;
+    const { revealItemInDir } = await import("@tauri-apps/plugin-opener");
+    await revealItemInDir(absolute);
   },
 
   togglePin(path) {

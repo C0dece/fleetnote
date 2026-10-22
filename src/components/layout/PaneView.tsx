@@ -5,7 +5,9 @@ import { TabBar } from "./TabBar";
 import { EditorPane } from "./EditorPane";
 import { GraphView } from "@/components/views/GraphView";
 import { CanvasView } from "@/components/views/CanvasView";
+import { FileView } from "@/components/views/FileView";
 import { isCanvasTab, isGraphTab } from "@/core/views";
+import { isMarkdown } from "@/core/fs/paths";
 
 const ZONE_STYLES: Record<string, string> = {
   center: "inset-0",
@@ -39,6 +41,8 @@ export function PaneView({ paneId }: { paneId: string }) {
           <GraphView />
         ) : pane.active && isCanvasTab(pane.active) ? (
           <CanvasView path={pane.active} />
+        ) : pane.active && !isMarkdown(pane.active) ? (
+          <FileView path={pane.active} />
         ) : (
           <EditorPane path={pane.active} paneId={paneId} />
         )}

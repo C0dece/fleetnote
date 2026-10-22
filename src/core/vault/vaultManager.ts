@@ -1,14 +1,5 @@
 import type { VaultFs } from "../fs/types";
-import {
-  basename,
-  dirname,
-  isAttachment,
-  isMarkdown,
-  join,
-  sanitizeName,
-  stem,
-  uniquePath,
-} from "../fs/paths";
+import { basename, dirname, isMarkdown, join, sanitizeName, stem, uniquePath } from "../fs/paths";
 import { parseNote, rewriteWikiLinks, type Heading, type ParsedNote } from "./markdown";
 
 export interface NoteMeta {
@@ -55,9 +46,8 @@ type Listener = (change: VaultChange) => void;
 export class VaultManager {
   readonly notes = new Map<string, NoteMeta>();
   readonly folders = new Set<string>();
-  readonly attachments = new Set<string>();
-  /** Файлы базы, которые не заметки и не вложения: холсты `.canvas` и прочее. */
-  readonly otherFiles = new Set<string>();
+  /** Все файлы базы, которые не являются заметками: вложения, холсты, что угодно. */
+  readonly files = new Map<string, { mtime: number; size: number }>();
 
   private byStem = new Map<string, string[]>();
   private backlinks = new Map<string, Set<string>>();
@@ -85,16 +75,16 @@ export class VaultManager {
     const { onProgress, onNote } = options;
     this.notes.clear();
     this.folders.clear();
-    this.attachments.clear();
-    this.otherFiles.clear();
+    this.files.clear();
     this.parsedCache.clear();
 
     const entries = await this.fs.list();
     const markdown = entries.filter((e) => !e.isDir && isMarkdown(e.path));
     for (const entry of entries) {
       if (entry.isDir) this.folders.add(entry.path);
-      else if (isAttachment(entry.path)) this.attachments.add(entry.path);
-      else if (!isMarkdown(entry.path)) this.otherFiles.add(entry.path);
+      else if (!isMarkdown(entry.path)) {
+        this.files.set(entry.path, { mtime: entry.mtime ?? 0, size: entry.size ?? 0 });
+      }
     }
 
     let done = 0;
@@ -124,7 +114,7 @@ export class VaultManager {
       mtime,
       size,
       tags: parsed.tags,
-      outgoing: parsed.links.map((link) => link.target),
+      outgoing: parsed.links.filter((link) => !link.embed).map((link) => link.target),
       headings: parsed.headings,
       tasks: parsed.tasks,
       excerpt: parsed.excerpt,
@@ -183,15 +173,36 @@ export class VaultManager {
     return null;
   }
 
+  /** Куда ведёт `![[вложение.png]]`: ищем среди файлов базы по пути или имени. */
+  resolveFile(target: string, fromPath?: string): string | null {
+    const clean = target.replace(/^\.\//, "").trim();
+    if (this.files.has(clean)) return clean;
+    if (fromPath) {
+      const relative = join(dirname(fromPath), clean);
+      if (this.files.has(relative)) return relative;
+    }
+    const name = basename(clean).toLowerCase();
+    for (const path of this.files.keys()) {
+      if (basename(path).toLowerCase() === name) return path;
+    }
+    const suffix = `/${clean.toLowerCase()}`;
+    for (const path of this.files.keys()) {
+      if (path.toLowerCase().endsWith(suffix)) return path;
+    }
+    return null;
+  }
+
   linksFrom(path: string): ResolvedLink[] {
     const parsed = this.parsedCache.get(path);
     if (!parsed) return [];
-    return parsed.links.map((link) => ({
-      target: link.target,
-      alias: link.alias,
-      heading: link.heading,
-      path: this.resolve(link.target, path),
-    }));
+    return parsed.links
+      .filter((link) => !link.embed)
+      .map((link) => ({
+        target: link.target,
+        alias: link.alias,
+        heading: link.heading,
+        path: this.resolve(link.target, path),
+      }));
   }
 
   backlinksOf(path: string): string[] {
@@ -203,7 +214,8 @@ export class VaultManager {
     const map = new Map<string, Set<string>>();
     for (const meta of this.notes.values()) {
       for (const target of meta.outgoing) {
-        if (this.resolve(target, meta.path)) continue;
+        // вложения и файлы «битыми ссылками» не считаются
+        if (this.resolve(target, meta.path) || this.resolveFile(target, meta.path)) continue;
         const set = map.get(target) ?? new Set<string>();
         set.add(meta.path);
         map.set(target, set);
@@ -329,6 +341,7 @@ export class VaultManager {
   async remove(path: string): Promise<void> {
     await this.fs.remove(path);
     this.notes.delete(path);
+    this.files.delete(path);
     this.folders.delete(path);
     for (const key of [...this.notes.keys()]) if (key.startsWith(`${path}/`)) this.notes.delete(key);
     for (const key of [...this.folders]) if (key.startsWith(`${path}/`)) this.folders.delete(key);

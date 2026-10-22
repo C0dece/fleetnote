@@ -1,5 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FileText, Link2, Plus, Save, Square, Trash2, ZoomIn, ZoomOut } from "lucide-react";
+import {
+  FileText,
+  Group,
+  Link2,
+  Plus,
+  Redo2,
+  Save,
+  Square,
+  Trash2,
+  Undo2,
+  X,
+  ZoomIn,
+  ZoomOut,
+} from "lucide-react";
 import { useVaultStore } from "@/stores/vaultStore";
 import { useEditorStore } from "@/stores/editorStore";
 import { stem } from "@/core/fs/paths";
@@ -7,9 +20,10 @@ import { stem } from "@/core/fs/paths";
 /** Формат холста совместим с Obsidian Canvas: те же поля, тот же `.canvas`. */
 interface CanvasNode {
   id: string;
-  type: "text" | "file";
+  type: "text" | "file" | "group";
   text?: string;
   file?: string;
+  label?: string;
   x: number;
   y: number;
   width: number;
@@ -34,8 +48,9 @@ interface CanvasData {
 
 const COLORS = ["", "#EF4444", "#F59E0B", "#10B981", "#6366F1", "#EC4899"];
 const SAVE_DEBOUNCE = 700;
+const HISTORY_LIMIT = 60;
 
-/** Холст: бесконечное полотно с карточками заметок и текста и связями между ними. */
+/** Холст: бесконечное полотно с карточками, группами и связями. */
 export function CanvasView({ path }: { path: string }) {
   const vault = useVaultStore();
   const openNote = useEditorStore((state) => state.openNote);
@@ -45,13 +60,18 @@ export function CanvasView({ path }: { path: string }) {
   const [view, setView] = useState({ x: 0, y: 0, scale: 1 });
   const [selected, setSelected] = useState<string | null>(null);
   const [linking, setLinking] = useState<{ from: string; x: number; y: number } | null>(null);
+  const [editingEdge, setEditingEdge] = useState<string | null>(null);
   const [picker, setPicker] = useState(false);
   const surface = useRef<HTMLDivElement | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loaded = useRef(false);
+  const history = useRef<{ past: CanvasData[]; future: CanvasData[] }>({ past: [], future: [] });
+  const [historySize, setHistorySize] = useState({ past: 0, future: 0 });
 
   useEffect(() => {
     loaded.current = false;
+    history.current = { past: [], future: [] };
+    setHistorySize({ past: 0, future: 0 });
     void (async () => {
       try {
         const raw = await vault.readRaw(path);
@@ -76,7 +96,57 @@ export function CanvasView({ path }: { path: string }) {
     };
   }, [data, path, vault]);
 
-  const update = useCallback((patch: (current: CanvasData) => CanvasData) => setData(patch), []);
+  /** Запомнить состояние до изменения — для отмены. */
+  const remember = useCallback(() => {
+    history.current.past.push(structuredClone(dataRef.current));
+    if (history.current.past.length > HISTORY_LIMIT) history.current.past.shift();
+    history.current.future = [];
+    setHistorySize({ past: history.current.past.length, future: 0 });
+  }, []);
+
+  const dataRef = useRef(data);
+  dataRef.current = data;
+
+  const update = useCallback(
+    (patch: (current: CanvasData) => CanvasData, record = true) => {
+      if (record) remember();
+      setData(patch);
+    },
+    [remember],
+  );
+
+  const undo = useCallback(() => {
+    const previous = history.current.past.pop();
+    if (!previous) return;
+    history.current.future.push(structuredClone(dataRef.current));
+    setData(previous);
+    setHistorySize({ past: history.current.past.length, future: history.current.future.length });
+  }, []);
+
+  const redo = useCallback(() => {
+    const next = history.current.future.pop();
+    if (!next) return;
+    history.current.past.push(structuredClone(dataRef.current));
+    setData(next);
+    setHistorySize({ past: history.current.past.length, future: history.current.future.length });
+  }, []);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey)) return;
+      if (event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        if (event.shiftKey) redo();
+        else undo();
+      }
+      if (event.key.toLowerCase() === "y") {
+        event.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [undo, redo]);
 
   const toWorld = useCallback(
     (clientX: number, clientY: number) => {
@@ -97,22 +167,39 @@ export function CanvasView({ path }: { path: string }) {
       (rect?.top ?? 0) + (rect?.height ?? 400) / 2,
     );
     const id = `n${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-    update((current) => ({
-      ...current,
-      nodes: [
-        ...current.nodes,
-        {
-          id,
-          type: "text",
-          text: "",
-          x: Math.round(center.x - 110),
-          y: Math.round(center.y - 60),
-          width: 220,
-          height: 120,
-          ...node,
-        } as CanvasNode,
-      ],
-    }));
+    const width = node.width ?? 220;
+    const height = node.height ?? 120;
+    update((current) => {
+      // Новая карточка не ложится поверх существующих: ищем ближайшее свободное место
+      const others = current.nodes.filter((item) => item.type !== "group");
+      const intersects = (x: number, y: number) =>
+        others.some(
+          (item) =>
+            x < item.x + item.width + 12 &&
+            x + width + 12 > item.x &&
+            y < item.y + item.height + 12 &&
+            y + height + 12 > item.y,
+        );
+      let x = Math.round(node.x ?? center.x - width / 2);
+      let y = Math.round(node.y ?? center.y - height / 2);
+      if (node.x === undefined && node.y === undefined) {
+        search: for (let row = 0; row < 8; row++) {
+          for (let column = 0; column < 8; column++) {
+            const candidateX = Math.round(center.x - width / 2 + column * (width + 24));
+            const candidateY = Math.round(center.y - height / 2 + row * (height + 24));
+            if (!intersects(candidateX, candidateY)) {
+              x = candidateX;
+              y = candidateY;
+              break search;
+            }
+          }
+        }
+      }
+      return {
+        ...current,
+        nodes: [...current.nodes, { id, type: "text", text: "", width, height, ...node, x, y } as CanvasNode],
+      };
+    });
     setSelected(id);
   };
 
@@ -122,24 +209,48 @@ export function CanvasView({ path }: { path: string }) {
       edges: current.edges.filter((edge) => edge.fromNode !== id && edge.toNode !== id),
     }));
 
+  /** Какие карточки лежат внутри группы — они двигаются вместе с ней. */
+  const nodesInside = (group: CanvasNode, nodes: CanvasNode[]): string[] =>
+    nodes
+      .filter(
+        (node) =>
+          node.id !== group.id &&
+          node.x >= group.x &&
+          node.y >= group.y &&
+          node.x + node.width <= group.x + group.width &&
+          node.y + node.height <= group.y + group.height,
+      )
+      .map((node) => node.id);
+
   const dragNode = (id: string) => (event: React.PointerEvent) => {
     if (event.button !== 0) return;
     event.stopPropagation();
     setSelected(id);
     const node = data.nodes.find((item) => item.id === id);
     if (!node) return;
+    const moving = node.type === "group" ? [id, ...nodesInside(node, data.nodes)] : [id];
+    const origins = new Map(
+      data.nodes
+        .filter((item) => moving.includes(item.id))
+        .map((item) => [item.id, { x: item.x, y: item.y }]),
+    );
     const startX = event.clientX;
     const startY = event.clientY;
-    const origin = { x: node.x, y: node.y };
+    remember();
+
     const move = (moveEvent: PointerEvent) => {
       const dx = (moveEvent.clientX - startX) / view.scale;
       const dy = (moveEvent.clientY - startY) / view.scale;
-      update((current) => ({
-        ...current,
-        nodes: current.nodes.map((item) =>
-          item.id === id ? { ...item, x: Math.round(origin.x + dx), y: Math.round(origin.y + dy) } : item,
-        ),
-      }));
+      update(
+        (current) => ({
+          ...current,
+          nodes: current.nodes.map((item) => {
+            const origin = origins.get(item.id);
+            return origin ? { ...item, x: Math.round(origin.x + dx), y: Math.round(origin.y + dy) } : item;
+          }),
+        }),
+        false,
+      );
     };
     const up = () => {
       window.removeEventListener("pointermove", move);
@@ -156,21 +267,25 @@ export function CanvasView({ path }: { path: string }) {
     const startX = event.clientX;
     const startY = event.clientY;
     const origin = { width: node.width, height: node.height };
+    remember();
     const move = (moveEvent: PointerEvent) => {
       const dx = (moveEvent.clientX - startX) / view.scale;
       const dy = (moveEvent.clientY - startY) / view.scale;
-      update((current) => ({
-        ...current,
-        nodes: current.nodes.map((item) =>
-          item.id === id
-            ? {
-                ...item,
-                width: Math.max(120, Math.round(origin.width + dx)),
-                height: Math.max(80, Math.round(origin.height + dy)),
-              }
-            : item,
-        ),
-      }));
+      update(
+        (current) => ({
+          ...current,
+          nodes: current.nodes.map((item) =>
+            item.id === id
+              ? {
+                  ...item,
+                  width: Math.max(120, Math.round(origin.width + dx)),
+                  height: Math.max(80, Math.round(origin.height + dy)),
+                }
+              : item,
+          ),
+        }),
+        false,
+      );
     };
     const up = () => {
       window.removeEventListener("pointermove", move);
@@ -217,6 +332,7 @@ export function CanvasView({ path }: { path: string }) {
   const panSurface = (event: React.PointerEvent) => {
     if (event.target !== event.currentTarget) return;
     setSelected(null);
+    setEditingEdge(null);
     const startX = event.clientX;
     const startY = event.clientY;
     const origin = { ...view };
@@ -241,18 +357,31 @@ export function CanvasView({ path }: { path: string }) {
       const from = byId.get(edge.fromNode);
       const to = byId.get(edge.toNode);
       if (!from || !to) return [];
+      const x1 = from.x + from.width;
+      const y1 = from.y + from.height / 2;
+      const x2 = to.x;
+      const y2 = to.y + to.height / 2;
       return [
         {
           id: edge.id,
-          x1: from.x + from.width,
-          y1: from.y + from.height / 2,
-          x2: to.x,
-          y2: to.y + to.height / 2,
+          label: edge.label ?? "",
           color: edge.color,
+          x1,
+          y1,
+          x2,
+          y2,
+          mx: (x1 + x2) / 2,
+          my: (y1 + y2) / 2,
         },
       ];
     });
   }, [data]);
+
+  // Группы рисуются под карточками
+  const ordered = useMemo(
+    () => [...data.nodes].sort((a, b) => Number(a.type === "group") * -1 - Number(b.type === "group") * -1),
+    [data.nodes],
+  );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -271,6 +400,33 @@ export function CanvasView({ path }: { path: string }) {
         >
           <FileText size={13} /> Заметка
         </button>
+        <button
+          type="button"
+          onClick={() => addNode({ type: "group", label: "Группа", width: 360, height: 240 })}
+          className="flex items-center gap-1 rounded-lg border px-2 py-1 text-[12.5px] text-ink hairline hover:bg-hover"
+        >
+          <Group size={13} /> Группа
+        </button>
+
+        <button
+          type="button"
+          onClick={undo}
+          disabled={historySize.past === 0}
+          title="Отменить (Ctrl/Cmd + Z)"
+          className="flex size-7 items-center justify-center rounded-lg text-muted hover:bg-hover disabled:opacity-40"
+        >
+          <Undo2 size={14} />
+        </button>
+        <button
+          type="button"
+          onClick={redo}
+          disabled={historySize.future === 0}
+          title="Повторить (Ctrl/Cmd + Shift + Z)"
+          className="flex size-7 items-center justify-center rounded-lg text-muted hover:bg-hover disabled:opacity-40"
+        >
+          <Redo2 size={14} />
+        </button>
+
         {selected && (
           <>
             <div className="flex items-center gap-1 rounded-lg border px-1.5 py-1 hairline">
@@ -304,6 +460,7 @@ export function CanvasView({ path }: { path: string }) {
             </button>
           </>
         )}
+
         <span className="ml-auto flex items-center gap-1">
           <button
             type="button"
@@ -371,81 +528,176 @@ export function CanvasView({ path }: { path: string }) {
                 <circle cx={line.x2} cy={line.y2} r={3} fill={line.color ?? "var(--fn-ink-muted)"} />
               </g>
             ))}
-            {linking && (
-              <path
-                d={`M ${linking.x} ${linking.y} L ${linking.x} ${linking.y}`}
-                stroke="var(--fn-accent)"
-                strokeWidth={2}
-                fill="none"
-              />
-            )}
+            {linking && <circle cx={linking.x} cy={linking.y} r={4} fill="var(--fn-accent)" />}
           </svg>
 
-          {data.nodes.map((node) => (
+          {/* Подписи связей: кликаются и редактируются прямо на полотне */}
+          {edgeLines.map((line) => (
             <div
-              key={node.id}
-              data-canvas-node={node.id}
-              onPointerDown={dragNode(node.id)}
-              style={{
-                left: node.x,
-                top: node.y,
-                width: node.width,
-                height: node.height,
-                borderColor: node.color ?? "var(--fn-hairline)",
-              }}
-              className={`absolute flex flex-col overflow-hidden rounded-xl border-2 bg-panel ${
-                selected === node.id ? "ring-2 ring-[var(--fn-accent)]" : ""
-              }`}
+              key={`label-${line.id}`}
+              style={{ left: line.mx, top: line.my }}
+              className="absolute -translate-x-1/2 -translate-y-1/2"
             >
-              {node.type === "file" ? (
-                <button
-                  type="button"
-                  onDoubleClick={() => node.file && void openNote(node.file)}
-                  className="flex h-full w-full flex-col items-start gap-1 p-2 text-left"
-                >
-                  <span className="flex items-center gap-1 text-[12px] text-accent">
-                    <FileText size={12} /> {stem(node.file ?? "")}
-                  </span>
-                  <span className="line-clamp-4 text-[12px] text-muted">
-                    {notes.find((item) => item.path === node.file)?.excerpt ?? "Двойной клик — открыть"}
-                  </span>
-                </button>
+              {editingEdge === line.id ? (
+                <input
+                  autoFocus
+                  defaultValue={line.label}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onBlur={(event) => {
+                    const label = event.target.value.trim();
+                    update((current) => ({
+                      ...current,
+                      edges: current.edges.map((edge) =>
+                        edge.id === line.id ? { ...edge, label: label || undefined } : edge,
+                      ),
+                    }));
+                    setEditingEdge(null);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") event.currentTarget.blur();
+                    if (event.key === "Escape") setEditingEdge(null);
+                  }}
+                  className="w-32 rounded border bg-panel px-1.5 py-0.5 text-center text-[11.5px] text-ink outline-none hairline"
+                />
               ) : (
-                <textarea
-                  value={node.text ?? ""}
+                <span className="group flex items-center gap-1">
+                  <button
+                    type="button"
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={() => setEditingEdge(line.id)}
+                    className={`rounded border px-1.5 py-0.5 text-[11.5px] hairline ${
+                      line.label
+                        ? "bg-panel text-ink"
+                        : "bg-panel/70 text-muted opacity-0 group-hover:opacity-100"
+                    }`}
+                  >
+                    {line.label || "подпись"}
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Удалить связь"
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={() =>
+                      update((current) => ({
+                        ...current,
+                        edges: current.edges.filter((edge) => edge.id !== line.id),
+                      }))
+                    }
+                    className="rounded border bg-panel p-0.5 text-muted opacity-0 hairline hover:text-danger group-hover:opacity-100"
+                  >
+                    <X size={10} />
+                  </button>
+                </span>
+              )}
+            </div>
+          ))}
+
+          {ordered.map((node) =>
+            node.type === "group" ? (
+              <div
+                key={node.id}
+                data-canvas-node={node.id}
+                onPointerDown={dragNode(node.id)}
+                style={{
+                  left: node.x,
+                  top: node.y,
+                  width: node.width,
+                  height: node.height,
+                  borderColor: node.color ?? "var(--fn-ink-muted)",
+                }}
+                className={`absolute rounded-2xl border-2 border-dashed bg-[var(--fn-panel)]/30 ${
+                  selected === node.id ? "ring-2 ring-[var(--fn-accent)]" : ""
+                }`}
+              >
+                <input
+                  value={node.label ?? ""}
                   onPointerDown={(event) => event.stopPropagation()}
                   onChange={(event) =>
                     update((current) => ({
                       ...current,
                       nodes: current.nodes.map((item) =>
-                        item.id === node.id ? { ...item, text: event.target.value } : item,
+                        item.id === node.id ? { ...item, label: event.target.value } : item,
                       ),
                     }))
                   }
-                  placeholder="Текст карточки"
-                  className="h-full w-full resize-none bg-transparent p-2 text-[13px] text-ink outline-none placeholder:text-muted"
+                  placeholder="Название группы"
+                  className="w-full bg-transparent px-3 py-1.5 text-[12.5px] font-medium text-muted outline-none"
                 />
-              )}
+                <button
+                  type="button"
+                  aria-label="Изменить размер"
+                  onPointerDown={resizeNode(node.id)}
+                  className="absolute bottom-0 right-0 flex size-4 cursor-nwse-resize items-center justify-center text-muted"
+                >
+                  <Square size={9} />
+                </button>
+              </div>
+            ) : (
+              <div
+                key={node.id}
+                data-canvas-node={node.id}
+                onPointerDown={dragNode(node.id)}
+                style={{
+                  left: node.x,
+                  top: node.y,
+                  width: node.width,
+                  height: node.height,
+                  borderColor: node.color ?? "var(--fn-hairline)",
+                }}
+                className={`absolute flex flex-col overflow-hidden rounded-xl border-2 bg-panel ${
+                  selected === node.id ? "ring-2 ring-[var(--fn-accent)]" : ""
+                }`}
+              >
+                {node.type === "file" ? (
+                  <button
+                    type="button"
+                    onDoubleClick={() => node.file && void openNote(node.file)}
+                    className="flex h-full w-full flex-col items-start gap-1 p-2 text-left"
+                  >
+                    <span className="flex items-center gap-1 text-[12px] text-accent">
+                      <FileText size={12} /> {stem(node.file ?? "")}
+                    </span>
+                    <span className="line-clamp-4 text-[12px] text-muted">
+                      {notes.find((item) => item.path === node.file)?.excerpt ?? "Двойной клик — открыть"}
+                    </span>
+                  </button>
+                ) : (
+                  <textarea
+                    value={node.text ?? ""}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onChange={(event) =>
+                      update((current) => ({
+                        ...current,
+                        nodes: current.nodes.map((item) =>
+                          item.id === node.id ? { ...item, text: event.target.value } : item,
+                        ),
+                      }))
+                    }
+                    placeholder="Текст карточки"
+                    className="h-full w-full resize-none bg-transparent p-2 text-[13px] text-ink outline-none placeholder:text-muted"
+                  />
+                )}
 
-              <button
-                type="button"
-                aria-label="Связать"
-                title="Потяните к другой карточке"
-                onPointerDown={startLink(node.id)}
-                className="absolute -right-2.5 top-1/2 flex size-5 -translate-y-1/2 items-center justify-center rounded-full border bg-panel text-muted hairline hover:text-accent"
-              >
-                <Link2 size={11} />
-              </button>
-              <button
-                type="button"
-                aria-label="Изменить размер"
-                onPointerDown={resizeNode(node.id)}
-                className="absolute bottom-0 right-0 flex size-4 cursor-nwse-resize items-center justify-center text-muted"
-              >
-                <Square size={9} />
-              </button>
-            </div>
-          ))}
+                <button
+                  type="button"
+                  aria-label="Связать"
+                  title="Потяните к другой карточке"
+                  onPointerDown={startLink(node.id)}
+                  className="absolute -right-2.5 top-1/2 flex size-5 -translate-y-1/2 items-center justify-center rounded-full border bg-panel text-muted hairline hover:text-accent"
+                >
+                  <Link2 size={11} />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Изменить размер"
+                  onPointerDown={resizeNode(node.id)}
+                  className="absolute bottom-0 right-0 flex size-4 cursor-nwse-resize items-center justify-center text-muted"
+                >
+                  <Square size={9} />
+                </button>
+              </div>
+            ),
+          )}
         </div>
       </div>
 

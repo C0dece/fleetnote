@@ -5,6 +5,7 @@ import {
   FolderPlus,
   Hash,
   ListTree,
+  Paperclip,
   Search,
   Share2,
   SquareDashedMousePointer,
@@ -75,6 +76,9 @@ export function Sidebar({ touch = false, initialTab = "files" }: { touch?: boole
             }}
           >
             <SquareDashedMousePointer size={15} />
+          </IconButton>
+          <IconButton title="Добавить файл в базу" onClick={() => void vault.importFromDisk()}>
+            <Paperclip size={15} />
           </IconButton>
           <IconButton title="Граф базы" onClick={() => void openNote(GRAPH_TAB)}>
             <Share2 size={15} />

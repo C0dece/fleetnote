@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { ArrowDownToLine, ArrowUpFromLine, ExternalLink, RefreshCw } from "lucide-react";
+import { ArrowDownToLine, ArrowUpFromLine, RefreshCw } from "lucide-react";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useSyncStore } from "@/stores/syncStore";
 import { ADAPTER_FIELDS } from "@/core/sync/adapters";
 import type { AdapterId } from "@/core/sync/types";
-import { buildAuthUrl, createPkcePair, exchangeCode } from "@/core/sync/adapters/gdriveAuth";
-import { isTauri } from "@/core/fs";
+import { GoogleAuthBlock } from "../GoogleAuthBlock";
+import { secretsBackend } from "@/core/secrets";
 import { Row, Segmented, SelectField, Slider, TextField, Toggle } from "../fields";
 
 const ADAPTERS: Array<{ id: AdapterId | "none"; label: string }> = [
@@ -103,7 +103,7 @@ export function SyncSection() {
               />
             </label>
           ))}
-          {adapter === "gdrive" && <GoogleAuth options={options} setOptions={setOptions} />}
+          {adapter === "gdrive" && <GoogleAuthBlock options={options} setOptions={setOptions} />}
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -116,6 +116,13 @@ export function SyncSection() {
             {notice && <span className="text-[12.5px] text-muted">{notice}</span>}
           </div>
           {store.lastError && <p className="text-[12.5px] text-danger">{store.lastError}</p>}
+          <p className="text-[12px] text-muted">
+            {secretsBackend() === "system"
+              ? "Пароли и токены хранятся в системном хранилище секретов."
+              : secretsBackend() === "file"
+                ? "Системное хранилище недоступно: секреты лежат в файле приложения с правами только для вас."
+                : "Браузерная версия: секреты остаются в хранилище вкладки."}
+          </p>
         </div>
       )}
 
@@ -175,87 +182,6 @@ export function SyncSection() {
       <Row label="Сверять при запуске">
         <Toggle value={sync.syncOnStart} onChange={(syncOnStart) => set("sync", { syncOnStart })} />
       </Row>
-    </div>
-  );
-}
-
-/** Вход в Google по PKCE: ссылка открывается в браузере, код вставляется обратно. */
-function GoogleAuth({
-  options,
-  setOptions,
-}: {
-  options: Record<string, string>;
-  setOptions(next: Record<string, string>): void;
-}) {
-  const [verifier, setVerifier] = useState<string | null>(null);
-  const [code, setCode] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const redirectUri = import.meta.env.VITE_GDRIVE_REDIRECT_URI ?? "http://127.0.0.1:1421/oauth/callback";
-  const clientId = options.clientId ?? import.meta.env.VITE_GDRIVE_CLIENT_ID ?? "";
-
-  const start = async () => {
-    setError(null);
-    if (!clientId) {
-      setError("Сначала укажите OAuth Client ID");
-      return;
-    }
-    const pair = await createPkcePair();
-    setVerifier(pair.verifier);
-    const url = buildAuthUrl({ clientId, redirectUri, challenge: pair.challenge });
-    if (isTauri()) {
-      const { openUrl } = await import("@tauri-apps/plugin-opener");
-      await openUrl(url);
-    } else {
-      window.open(url, "_blank", "noopener");
-    }
-  };
-
-  const finish = async () => {
-    setError(null);
-    if (!verifier) {
-      setError("Сначала откройте страницу входа");
-      return;
-    }
-    try {
-      const tokens = await exchangeCode({ clientId, redirectUri, code: code.trim(), verifier });
-      setOptions({
-        ...options,
-        accessToken: tokens.accessToken,
-        refreshToken: tokens.refreshToken ?? "",
-        expiresAt: String(tokens.expiresAt),
-      });
-      setCode("");
-    } catch (exchangeError) {
-      setError(exchangeError instanceof Error ? exchangeError.message : String(exchangeError));
-    }
-  };
-
-  return (
-    <div className="rounded-xl border bg-canvas p-3 hairline">
-      <p className="text-[12.5px] text-muted">
-        Вход по PKCE без client_secret: откройте страницу Google, разрешите доступ и вставьте{" "}
-        <code>code</code> из адресной строки редиректа.
-      </p>
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={() => void start()}
-          className="flex touch-row items-center gap-2 rounded-lg border px-3 text-[13.5px] text-ink hairline hover:bg-hover"
-        >
-          <ExternalLink size={15} />
-          Открыть вход Google
-        </button>
-        <TextField value={code} onChange={setCode} placeholder="Вставьте code=…" />
-        <button
-          type="button"
-          onClick={() => void finish()}
-          className="touch-row rounded-lg bg-accent px-3 text-[13.5px] font-medium text-white"
-        >
-          Обменять код
-        </button>
-      </div>
-      {options.accessToken && <p className="mt-2 text-[12.5px] text-ok">Токен получен</p>}
-      {error && <p className="mt-2 text-[12.5px] text-danger">{error}</p>}
     </div>
   );
 }

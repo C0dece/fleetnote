@@ -13,9 +13,12 @@ export function isSpecialTab(path: string): boolean {
   return isGraphTab(path) || isCanvasTab(path);
 }
 
-/** Подпись вкладки для специальных видов. */
+/** Подпись вкладки для специальных видов и обычных файлов. */
 export function specialTabTitle(path: string): string | null {
   if (isGraphTab(path)) return "Граф базы";
   if (isCanvasTab(path)) return (path.split("/").pop() ?? path).replace(/\.canvas$/i, "");
+  if (!path.toLowerCase().endsWith(".md") && !path.toLowerCase().endsWith(".markdown")) {
+    return path.split("/").pop() ?? path;
+  }
   return null;
 }

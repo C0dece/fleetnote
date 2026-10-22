@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Filter, Focus, Maximize2, Minus, Plus } from "lucide-react";
+import { Filter, Focus, Hash, Maximize2, Minus, Plus } from "lucide-react";
 import { useVaultStore } from "@/stores/vaultStore";
 import { useEditorStore } from "@/stores/editorStore";
 
@@ -45,6 +45,20 @@ export function GraphView() {
   const [query, setQuery] = useState("");
   const [showLabels, setShowLabels] = useState(true);
   const [onlyLinked, setOnlyLinked] = useState(false);
+  const [tagFilter, setTagFilter] = useState<string[]>([]);
+  const [folder, setFolder] = useState("");
+  const [depth, setDepth] = useState(0);
+  const tags = useVaultStore((state) => state.tags);
+
+  /** Папки верхнего уровня — ими удобно резать большую базу. */
+  const folders = useMemo(() => {
+    const set = new Set<string>();
+    for (const note of notes) {
+      const top = note.path.includes("/") ? note.path.split("/")[0] : "";
+      if (top) set.add(top);
+    }
+    return [...set].sort((a, b) => a.localeCompare(b, "ru"));
+  }, [notes]);
 
   const graph = useMemo(() => {
     void revision;
@@ -59,11 +73,41 @@ export function GraphView() {
       }
     }
     const needle = query.trim().toLowerCase();
-    const visible = notes.filter((note) => {
+    let visible = notes.filter((note) => {
       if (onlyLinked && !(degree.get(note.path) ?? 0)) return false;
+      if (folder && !note.path.startsWith(`${folder}/`)) return false;
+      if (
+        tagFilter.length &&
+        !tagFilter.every((tag) => note.tags.some((item) => item === tag || item.startsWith(`${tag}/`)))
+      )
+        return false;
       if (!needle) return true;
       return note.title.toLowerCase().includes(needle) || note.path.toLowerCase().includes(needle);
     });
+
+    // Глубина: оставляем только соседей активной заметки на заданном числе переходов
+    if (depth > 0 && active) {
+      const neighbours = new Map<string, string[]>();
+      for (const edge of edges) {
+        neighbours.set(edge.from, [...(neighbours.get(edge.from) ?? []), edge.to]);
+        neighbours.set(edge.to, [...(neighbours.get(edge.to) ?? []), edge.from]);
+      }
+      const reachable = new Set<string>([active]);
+      let frontier = [active];
+      for (let step = 0; step < depth; step++) {
+        const next: string[] = [];
+        for (const path of frontier) {
+          for (const neighbour of neighbours.get(path) ?? []) {
+            if (reachable.has(neighbour)) continue;
+            reachable.add(neighbour);
+            next.push(neighbour);
+          }
+        }
+        frontier = next;
+      }
+      visible = visible.filter((note) => reachable.has(note.path));
+    }
+
     const allowed = new Set(visible.map((note) => note.path));
     return {
       nodes: visible.map((note) => ({
@@ -73,7 +117,7 @@ export function GraphView() {
       })),
       edges: edges.filter((edge) => allowed.has(edge.from) && allowed.has(edge.to)),
     };
-  }, [notes, manager, revision, query, onlyLinked]);
+  }, [notes, manager, revision, query, onlyLinked, tagFilter, folder, depth, active]);
 
   // Пересобираем модель, сохраняя позиции уже знакомых узлов
   useEffect(() => {
@@ -253,6 +297,32 @@ export function GraphView() {
         >
           Только связанные
         </button>
+        {folders.length > 0 && (
+          <select
+            value={folder}
+            onChange={(event) => setFolder(event.target.value)}
+            className="rounded-lg border bg-canvas px-2 py-1.5 text-[12.5px] text-ink outline-none hairline"
+            aria-label="Папка"
+          >
+            <option value="">Все папки</option>
+            {folders.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
+        )}
+        <select
+          value={depth}
+          onChange={(event) => setDepth(Number(event.target.value))}
+          className="rounded-lg border bg-canvas px-2 py-1.5 text-[12.5px] text-ink outline-none hairline"
+          aria-label="Глубина связей"
+        >
+          <option value={0}>Вся база</option>
+          <option value={1}>Соседи активной</option>
+          <option value={2}>Два перехода</option>
+          <option value={3}>Три перехода</option>
+        </select>
         <button
           type="button"
           onClick={() => setShowLabels((value) => !value)}
@@ -262,9 +332,18 @@ export function GraphView() {
         >
           Подписи
         </button>
-        <span className="text-[12px] text-muted">
+        <span data-fn-graph-stats className="text-[12px] text-muted">
           {graph.nodes.length} заметок · {graph.edges.length} связей
         </span>
+        {tagFilter.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setTagFilter([])}
+            className="rounded-lg px-2 py-1 text-[12px] text-muted hover:bg-hover hover:text-ink"
+          >
+            Сбросить теги
+          </button>
+        )}
         <div className="ml-auto flex items-center gap-1">
           <button
             type="button"
@@ -305,6 +384,30 @@ export function GraphView() {
           </button>
         </div>
       </div>
+
+      {tags.length > 0 && (
+        <div className="flex shrink-0 flex-wrap gap-1 border-b px-2 py-1.5 hairline">
+          {tags.slice(0, 24).map(({ tag, count }) => (
+            <button
+              key={tag}
+              type="button"
+              data-fn-tag-chip={tag}
+              onClick={() =>
+                setTagFilter((current) =>
+                  current.includes(tag) ? current.filter((item) => item !== tag) : [...current, tag],
+                )
+              }
+              className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11.5px] hairline ${
+                tagFilter.includes(tag) ? "bg-accent text-white" : "text-muted hover:bg-hover hover:text-ink"
+              }`}
+            >
+              <Hash size={10} />
+              {tag}
+              <span className="opacity-60">{count}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       <canvas
         ref={canvas}

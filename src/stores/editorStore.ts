@@ -3,6 +3,7 @@ import { useVaultStore } from "./vaultStore";
 import { settings } from "./settingsStore";
 import type { EditorMode } from "./settingsStore";
 import { isSpecialTab } from "@/core/views";
+import { isMarkdown } from "@/core/fs/paths";
 import {
   insertBeside,
   makeId,
@@ -79,9 +80,10 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
 
   async openNote(path, options = {}) {
     const vault = useVaultStore.getState();
-    const text = isSpecialTab(path)
-      ? ""
-      : (get().drafts[path] ?? (await vault.readNote(path).catch(() => "")));
+    const text =
+      isSpecialTab(path) || !isMarkdown(path)
+        ? ""
+        : (get().drafts[path] ?? (await vault.readNote(path).catch(() => "")));
 
     set((state) => {
       let root = state.root;
