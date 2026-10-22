@@ -9,6 +9,7 @@ import { livePreview } from "./extensions/livePreview";
 import { fleetnoteCompletion } from "./extensions/completion";
 import { fleetnoteEditorTheme, fleetnoteHighlight } from "./extensions/theme";
 import { attachmentPaste } from "./extensions/attachments";
+import { hideFrontmatter } from "./extensions/frontmatter";
 import { formattingKeymap } from "./extensions/commands";
 
 export interface EditorHandle {
@@ -25,6 +26,8 @@ export interface EditorProps {
   /** `live` прячет разметку вне курсора, `source` показывает текст как есть. */
   mode?: "source" | "live";
   spellcheck?: boolean;
+  /** Прятать ли блок свойств: он редактируется отдельной панелью. */
+  hideFrontmatter?: boolean;
   indentSize?: number;
   slashMenu?: boolean;
   onChange(text: string): void;
@@ -74,6 +77,7 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(prop
       fleetnoteEditorTheme,
       placeholder("Пишите в Markdown. [[ — ссылка, # — тег, / — вставка, Ctrl/Cmd+K — палитра"),
       indentUnit.of(" ".repeat(props.indentSize ?? 2)),
+      hideFrontmatter(() => latest.current.hideFrontmatter === true),
       EditorView.contentAttributes.of({ spellcheck: props.spellcheck === false ? "false" : "true" }),
       ...(props.mode === "source"
         ? []

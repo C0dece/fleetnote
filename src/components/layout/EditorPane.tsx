@@ -134,6 +134,7 @@ export function EditorPane({ path, handle }: EditorPaneProps) {
             value={text}
             mode={mode === "source" ? "source" : "live"}
             spellcheck={editorSettings.spellcheck}
+            hideFrontmatter={editorSettings.showProperties}
             indentSize={editorSettings.indentSize}
             slashMenu={editorSettings.slashMenu}
             onChange={(next) => setDraft(path, next)}

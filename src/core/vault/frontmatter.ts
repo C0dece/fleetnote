@@ -20,8 +20,12 @@ export function parseProperties(text: string): { properties: Property[]; body: s
 
   for (const line of lines) {
     const listItem = /^\s*-\s+(.*)$/.exec(line);
-    if (listItem && current && current.type === "list") {
-      (current.value as string[]).push(unquote(listItem[1]));
+    if (listItem && current) {
+      // Поле становится списком, как только под ним появляется первый пункт
+      const property: Property =
+        current.type === "list" ? current : { key: current.key, type: "list", value: [] };
+      (property.value as string[]).push(unquote(listItem[1]));
+      current = property;
       continue;
     }
     const pair = /^([^:#][^:]*):\s*(.*)$/.exec(line);
@@ -37,7 +41,7 @@ export function parseProperties(text: string): { properties: Property[]; body: s
 }
 
 function inferValue(raw: string): { type: PropertyType; value: Property["value"] } {
-  if (raw === "") return { type: "list", value: [] };
+  if (raw === "") return { type: "text", value: "" };
   if (raw === "true" || raw === "false") return { type: "checkbox", value: raw === "true" };
   if (/^\[.*\]$/.test(raw)) {
     const items = raw

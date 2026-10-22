@@ -7,6 +7,8 @@ import {
   Layers,
   MoreHorizontal,
   Plus,
+  Settings as SettingsIcon,
+  Share2,
   RefreshCw,
   Search,
   Settings,
@@ -17,6 +19,8 @@ import { useEditorStore } from "@/stores/editorStore";
 import { useVaultStore } from "@/stores/vaultStore";
 import { useSyncStore } from "@/stores/syncStore";
 import { useVisualViewport } from "@/hooks/useVisualViewport";
+import { useSettingsStore } from "@/stores/settingsStore";
+import { GRAPH_TAB } from "@/core/views";
 import { Sidebar } from "./Sidebar";
 import { EditorPane } from "./EditorPane";
 import { SyncBadge } from "./SyncBadge";
@@ -36,6 +40,37 @@ export function MobileShell() {
   const active = editor.active;
   const title = active ? (vault.manager?.notes.get(active)?.title ?? active) : "Fleetnote";
   const touchStart = useRef<{ x: number; y: number } | null>(null);
+  const bottomNav = useSettingsStore((state) => state.mobile.bottomNav);
+
+  // Состав нижней панели задаётся в настройках
+  const navItems: Record<
+    string,
+    { label: string; icon: React.ReactNode; onClick(): void; accent?: boolean; badge?: number }
+  > = {
+    files: { label: "Файлы", icon: <Files size={19} />, onClick: () => ui.setSheet("files") },
+    search: { label: "Поиск", icon: <Search size={19} />, onClick: () => ui.setSheet("search") },
+    new: {
+      label: "Новая",
+      icon: <Plus size={22} />,
+      accent: true,
+      onClick: async () => {
+        const path = await vault.createNote();
+        if (path) await editor.openNote(path);
+      },
+    },
+    tabs: {
+      label: "Вкладки",
+      icon: <Layers size={19} />,
+      badge: editor.tabs.length,
+      onClick: () => ui.setSheet("tabs"),
+    },
+    sync: { label: "Облако", icon: <Cloud size={19} />, onClick: () => ui.setSheet("sync") },
+    graph: { label: "Граф", icon: <Share2 size={19} />, onClick: () => void editor.openNote(GRAPH_TAB) },
+    settings: { label: "Настройки", icon: <SettingsIcon size={19} />, onClick: () => ui.setSettings(true) },
+  };
+  const navButtons = bottomNav
+    .map((key) => ({ key, ...navItems[key] }))
+    .filter((item) => Boolean(item.label));
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-canvas">
@@ -86,24 +121,16 @@ export function MobileShell() {
 
       {!viewport.keyboardOpen && (
         <nav className="flex shrink-0 items-stretch border-t bg-panel hairline pb-safe">
-          <NavButton icon={<Files size={19} />} label="Файлы" onClick={() => ui.setSheet("files")} />
-          <NavButton icon={<Search size={19} />} label="Поиск" onClick={() => ui.setSheet("search")} />
-          <NavButton
-            icon={<Plus size={22} />}
-            label="Новая"
-            accent
-            onClick={async () => {
-              const path = await vault.createNote();
-              if (path) await editor.openNote(path);
-            }}
-          />
-          <NavButton
-            icon={<Layers size={19} />}
-            label="Вкладки"
-            badge={editor.tabs.length}
-            onClick={() => ui.setSheet("tabs")}
-          />
-          <NavButton icon={<Cloud size={19} />} label="Облако" onClick={() => ui.setSheet("sync")} />
+          {navButtons.map((item) => (
+            <NavButton
+              key={item.key}
+              icon={item.icon}
+              label={item.label}
+              accent={item.accent}
+              badge={item.badge}
+              onClick={item.onClick}
+            />
+          ))}
         </nav>
       )}
 
