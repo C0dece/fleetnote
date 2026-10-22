@@ -122,6 +122,26 @@ jobs:
           GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
         run: node scripts/ci-google-keys.mjs
 
+      # Отчёт без секретов: по нему видно, разобрался ли секрет, не читая логи сборки.
+      - name: Приложить отчёт о ключах к релизу
+        if: matrix.platform == 'ubuntu-22.04'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require("fs");
+            const { owner, repo } = context.repo;
+            const release_id = Number("${{ needs.prepare.outputs.release_id }}");
+            const assets = await github.rest.repos.listReleaseAssets({ owner, repo, release_id });
+            const old = assets.data.find((asset) => asset.name === "build-info.json");
+            if (old) await github.rest.repos.deleteReleaseAsset({ owner, repo, asset_id: old.id });
+            await github.rest.repos.uploadReleaseAsset({
+              owner,
+              repo,
+              release_id,
+              name: "build-info.json",
+              data: fs.readFileSync("build-info.json", "utf8"),
+            });
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

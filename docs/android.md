@@ -5,12 +5,12 @@
 
 ## Что нужно один раз установить
 
-| Компонент | Зачем | Проверка |
-| --- | --- | --- |
-| JDK 17 | Gradle-сборка | `java -version` |
-| Android SDK (cmdline-tools, platform-tools, build-tools) | компиляция и adb | `sdkmanager --list` |
-| Android NDK | нативная часть Tauri | `ls $ANDROID_HOME/ndk` |
-| Образ системы + эмулятор | запуск без телефона | `emulator -list-avds` |
+| Компонент                                                | Зачем                | Проверка               |
+| -------------------------------------------------------- | -------------------- | ---------------------- |
+| JDK 17                                                   | Gradle-сборка        | `java -version`        |
+| Android SDK (cmdline-tools, platform-tools, build-tools) | компиляция и adb     | `sdkmanager --list`    |
+| Android NDK                                              | нативная часть Tauri | `ls $ANDROID_HOME/ndk` |
+| Образ системы + эмулятор                                 | запуск без телефона  | `emulator -list-avds`  |
 
 Переменные окружения:
 
